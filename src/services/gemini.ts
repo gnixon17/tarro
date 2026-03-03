@@ -31,7 +31,7 @@ ${JSON.stringify(menuJson, null, 2)}
 `;
 
 export const processChatTurn = async (newMessages: Message[], customApiKey?: string, context?: string) => {
-  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+  const apiKey = customApiKey || localStorage.getItem('custom_gemini_api_key') || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is missing");
   
   const ai = new GoogleGenAI({ apiKey });
