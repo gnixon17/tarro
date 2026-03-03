@@ -21,9 +21,17 @@ export default function Regulars() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {regulars.map((customer) => {
-          const order = JSON.parse(customer.regular_order);
-          const fingerprint = JSON.parse(customer.voice_fingerprint);
+          // Supabase returns JSON columns as objects/arrays, so no need to parse if they are already objects
+          const order = typeof customer.regular_order === 'string' 
+            ? JSON.parse(customer.regular_order) 
+            : customer.regular_order;
+            
+          const fingerprint = typeof customer.voice_fingerprint === 'string'
+            ? JSON.parse(customer.voice_fingerprint)
+            : customer.voice_fingerprint;
           
+          if (!Array.isArray(order) || !Array.isArray(fingerprint)) return null;
+
           return (
             <div key={customer.id} className="bg-white border border-stone-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-4">

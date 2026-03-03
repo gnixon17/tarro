@@ -57,12 +57,27 @@ apiRouter.post('/identify-voice', async (req, res) => {
 
   console.log(`[POST /identify-voice] Comparing against ${customers?.length || 0} customers...`);
 
+  const MATCH_THRESHOLD = 1500;
+  
   if (customers) {
     for (const customer of customers) {
       // Supabase returns JSON columns as objects/arrays automatically
-      const storedPrint = customer.voice_fingerprint;
+      let storedPrint = customer.voice_fingerprint;
       
-      if (!Array.isArray(storedPrint)) continue;
+      // Handle potential string format (though Supabase should return object)
+      if (typeof storedPrint === 'string') {
+        try {
+          storedPrint = JSON.parse(storedPrint);
+        } catch (e) {
+          console.error(`[POST /identify-voice] Failed to parse fingerprint for ${customer.name}`);
+          continue;
+        }
+      }
+      
+      if (!Array.isArray(storedPrint)) {
+        console.warn(`[POST /identify-voice] Invalid fingerprint format for ${customer.name}`);
+        continue;
+      }
 
       const len = Math.min(fingerprint.length, storedPrint.length);
       let sumSqDiff = 0;
@@ -72,7 +87,7 @@ apiRouter.post('/identify-voice', async (req, res) => {
       }
       
       const distance = Math.sqrt(sumSqDiff);
-      console.log(` - Distance to ${customer.name}: ${distance.toFixed(2)}`);
+      console.log(` - Distance to ${customer.name}: ${distance.toFixed(2)} (Threshold: ${MATCH_THRESHOLD})`);
       
       if (distance < minDistance) {
         minDistance = distance;
@@ -80,8 +95,6 @@ apiRouter.post('/identify-voice', async (req, res) => {
       }
     }
   }
-
-  const MATCH_THRESHOLD = 1500;
 
   if (bestMatch && minDistance < MATCH_THRESHOLD) {
     console.log(`[POST /identify-voice] MATCH FOUND: ${bestMatch.name} (Dist: ${minDistance.toFixed(2)})`);
