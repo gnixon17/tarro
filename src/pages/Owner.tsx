@@ -1,33 +1,160 @@
-import { useState, useEffect } from 'react';
-import { Download, TrendingUp, ShoppingBag, Coffee, Clock, AlertTriangle, Percent, Layers, Activity } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Download, TrendingUp, ShoppingBag, Coffee, Clock, AlertTriangle, Percent, Layers, Activity, Sparkles, Send, Bot } from 'lucide-react';
+import { getBusinessInsight } from '../services/gemini';
+import { motion, AnimatePresence } from 'motion/react';
 
 export default function Owner() {
   const [metrics, setMetrics] = useState<any>(null);
+  const [insight, setInsight] = useState<string>('');
+  const [chatOpen, setChatOpen] = useState(false);
+  const [messages, setMessages] = useState<{role: 'user' | 'agent', text: string}[]>([]);
+  const [input, setInput] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch('/api/metrics')
       .then(res => res.json())
-      .then(data => setMetrics(data));
+      .then(async (data) => {
+        setMetrics(data);
+        // Proactive Pulse Check
+        try {
+          const summary = await getBusinessInsight(data);
+          setInsight(summary || '');
+          setMessages([{ role: 'agent', text: summary || "Hello! I'm analyzing today's data." }]);
+        } catch (e) {
+          console.error("Failed to get insight", e);
+        }
+      });
   }, []);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, chatOpen]);
+
+  const handleAsk = async () => {
+    if (!input.trim() || !metrics) return;
+    
+    const userMsg = input;
+    setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
+    setInput('');
+    setIsThinking(true);
+
+    try {
+      const response = await getBusinessInsight(metrics, userMsg);
+      setMessages(prev => [...prev, { role: 'agent', text: response || "I couldn't find an answer to that." }]);
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'agent', text: "Sorry, I'm having trouble connecting to the data service." }]);
+    } finally {
+      setIsThinking(false);
+    }
+  };
 
   if (!metrics) return <div className="p-8 text-center text-stone-500">Loading dashboard...</div>;
 
   return (
-    <div className="max-w-6xl mx-auto pb-12">
+    <div className="max-w-6xl mx-auto pb-12 relative">
       <div className="flex justify-between items-end mb-8">
         <div>
           <h1 className="text-3xl font-bold font-serif text-stone-900">Owner Dashboard</h1>
           <p className="text-stone-500 mt-1">End of day pulse check. Instantly understand today's performance.</p>
         </div>
-        <a 
-          href="/api/export" 
-          download="orders.csv"
-          className="flex items-center gap-2 bg-stone-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-stone-800 transition-colors"
-        >
-          <Download className="w-4 h-4" />
-          Export CSV
-        </a>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setChatOpen(!chatOpen)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all shadow-sm ${chatOpen ? 'bg-amber-100 text-amber-900 ring-2 ring-amber-500' : 'bg-white border border-stone-200 text-stone-700 hover:bg-stone-50'}`}
+          >
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            {chatOpen ? 'Hide Assistant' : 'Ask AI Assistant'}
+          </button>
+          <a 
+            href="/api/export" 
+            download="orders.csv"
+            className="flex items-center gap-2 bg-stone-900 text-white px-4 py-2 rounded-lg font-medium hover:bg-stone-800 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Export CSV
+          </a>
+        </div>
       </div>
+
+      {/* Proactive Insight Banner */}
+      {insight && !chatOpen && (
+        <motion.div 
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 bg-gradient-to-r from-stone-900 to-stone-800 text-white p-6 rounded-xl shadow-lg flex items-start gap-4 relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <Sparkles className="w-32 h-32" />
+          </div>
+          <div className="bg-white/10 p-3 rounded-full shrink-0 backdrop-blur-sm">
+            <Bot className="w-6 h-6 text-amber-300" />
+          </div>
+          <div className="relative z-10">
+            <h3 className="font-bold text-amber-300 text-sm uppercase tracking-wider mb-1">AI Pulse Check</h3>
+            <p className="text-lg font-light leading-relaxed">{insight}</p>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Inline Agent Chat Interface */}
+      <AnimatePresence>
+        {chatOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+            animate={{ opacity: 1, height: 'auto', marginBottom: 32 }}
+            exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+            className="bg-white border border-stone-200 rounded-xl shadow-lg overflow-hidden"
+          >
+            <div className="bg-stone-50 border-b border-stone-200 p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 font-bold text-stone-800">
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                Data Assistant
+              </div>
+              <span className="text-xs text-stone-500">Powered by Gemini 3.1 Pro</span>
+            </div>
+            
+            <div className="h-64 overflow-y-auto p-4 space-y-4 bg-stone-50/30">
+              {messages.map((m, i) => (
+                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] p-3 rounded-xl text-sm ${m.role === 'user' ? 'bg-stone-900 text-white rounded-br-none' : 'bg-white border border-stone-200 text-stone-800 rounded-bl-none shadow-sm'}`}>
+                    {m.text}
+                  </div>
+                </div>
+              ))}
+              {isThinking && (
+                <div className="flex justify-start">
+                  <div className="bg-white border border-stone-200 p-3 rounded-xl rounded-bl-none shadow-sm flex gap-1 items-center">
+                    <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" />
+                    <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                    <div className="w-1.5 h-1.5 bg-stone-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            <div className="p-4 bg-white border-t border-stone-200 flex gap-2">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAsk()}
+                placeholder="Ask about revenue, trends, or inventory..."
+                className="flex-1 border border-stone-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+              />
+              <button 
+                onClick={handleAsk}
+                disabled={!input.trim() || isThinking}
+                className="bg-amber-500 text-white p-2 rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {metrics.anomalyFlag && (
         <div className="mb-8 bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl flex items-start gap-3">

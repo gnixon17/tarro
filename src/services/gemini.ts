@@ -114,3 +114,27 @@ export const processChatTurn = async (newMessages: Message[], customApiKey?: str
 
   return { text: response.text || "" };
 };
+
+export const getBusinessInsight = async (metrics: any, query?: string) => {
+  const apiKey = localStorage.getItem('custom_gemini_api_key') || process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is missing");
+  
+  const ai = new GoogleGenAI({ apiKey });
+  
+  const prompt = query 
+    ? `The user is a coffee shop owner asking: "${query}". Answer based on the metrics provided below. Keep it brief and business-focused.`
+    : `You are a business analyst for a coffee shop. Provide a 2-sentence "Pulse Check" summary of today's performance based on the metrics below. Highlight revenue, key trends, or anomalies. Be encouraging but realistic.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3.1-pro-preview',
+    contents: [
+      { role: 'user', parts: [{ text: prompt }] },
+      { role: 'user', parts: [{ text: `METRICS:\n${JSON.stringify(metrics, null, 2)}` }] }
+    ],
+    config: {
+      temperature: 0.2
+    }
+  });
+
+  return response.text || "No insight available.";
+};
