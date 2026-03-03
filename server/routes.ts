@@ -4,6 +4,72 @@ import { randomUUID } from 'crypto';
 
 export const apiRouter = Router();
 
+// Customer Management
+apiRouter.post('/customers', (req, res) => {
+  const { name, voice_fingerprint, regular_order } = req.body;
+  const id = randomUUID();
+  
+  db.prepare('INSERT INTO customers (id, name, voice_fingerprint, regular_order) VALUES (?, ?, ?, ?)').run(
+    id, name, JSON.stringify(voice_fingerprint), JSON.stringify(regular_order)
+  );
+  
+  res.json({ id });
+});
+
+apiRouter.get('/customers', (req, res) => {
+  const customers = db.prepare('SELECT * FROM customers ORDER BY created_at DESC').all();
+  res.json(customers);
+});
+
+apiRouter.post('/identify-voice', (req, res) => {
+  const { fingerprint } = req.body; // Array of numbers (FFT data)
+  
+  if (!fingerprint || !Array.isArray(fingerprint)) {
+    return res.status(400).json({ error: "Invalid fingerprint data" });
+  }
+
+  const customers = db.prepare('SELECT * FROM customers').all() as any[];
+  let bestMatch = null;
+  let minDistance = Infinity;
+
+  // Simple Euclidean distance comparison
+  for (const customer of customers) {
+    const storedPrint = JSON.parse(customer.voice_fingerprint);
+    
+    // Ensure dimensions match (truncate to shorter length)
+    const len = Math.min(fingerprint.length, storedPrint.length);
+    let sumSqDiff = 0;
+    
+    for (let i = 0; i < len; i++) {
+      sumSqDiff += Math.pow(fingerprint[i] - storedPrint[i], 2);
+    }
+    
+    const distance = Math.sqrt(sumSqDiff);
+    
+    // Threshold for "match" (heuristic value, needs tuning)
+    // For normalized FFT data (0-255), a distance of < 500 might be a match depending on vector length
+    if (distance < minDistance) {
+      minDistance = distance;
+      bestMatch = customer;
+    }
+  }
+
+  // Threshold: If the closest match is still very far, it's not a match.
+  // Let's say max distance is 2000 for a vector of length 128 (approx 15 diff per bin on avg)
+  if (bestMatch && minDistance < 2000) {
+    res.json({ 
+      match: true, 
+      customer: { 
+        name: bestMatch.name, 
+        regular_order: JSON.parse(bestMatch.regular_order) 
+      },
+      confidence: 1 - (minDistance / 2000)
+    });
+  } else {
+    res.json({ match: false });
+  }
+});
+
 // Orders CRUD
 apiRouter.get('/orders', (req, res) => {
   const orders = db.prepare('SELECT * FROM orders ORDER BY created_at DESC').all() as Order[];

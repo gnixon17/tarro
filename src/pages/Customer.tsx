@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, MicOff, Send, Keyboard, Coffee } from 'lucide-react';
+import { Mic, MicOff, Send, Keyboard, Coffee, UserPlus, Fingerprint } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { processChatTurn, Message } from '../services/gemini';
+import { AudioFingerprinter } from '../utils/audioFingerprint';
 
 export default function Customer() {
   const [messages, setMessages] = useState<Message[]>([
@@ -13,7 +14,20 @@ export default function Customer() {
   const [isLoading, setIsLoading] = useState(false);
   const [receipt, setReceipt] = useState<any>(null);
   const [waitTime, setWaitTime] = useState<number | null>(null);
+  const [identifiedUser, setIdentifiedUser] = useState<any>(null);
+  const [isEnrolling, setIsEnrolling] = useState(false);
+  const [enrollmentStatus, setEnrollmentStatus] = useState<string>('');
+  
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const fingerprinterRef = useRef<AudioFingerprinter | null>(null);
+
+  // Initialize Audio Fingerprinter
+  useEffect(() => {
+    fingerprinterRef.current = new AudioFingerprinter();
+    return () => {
+      fingerprinterRef.current?.stop();
+    };
+  }, []);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -55,7 +69,12 @@ export default function Customer() {
     setIsLoading(true);
 
     try {
-      const data = await processChatTurn(newMessages);
+      // Pass identified user context if available
+      const context = identifiedUser 
+        ? `[SYSTEM: The user has been identified by voice as ${identifiedUser.name}. Their regular order is: ${JSON.stringify(identifiedUser.regular_order)}.]`
+        : undefined;
+
+      const data = await processChatTurn(newMessages, undefined, context);
       
       if (data.text) {
         setMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
@@ -91,14 +110,40 @@ export default function Customer() {
     }
   };
 
-  // Simple mock for STT using Web Speech API
-  const toggleRecording = () => {
+  const toggleRecording = async () => {
     if (isRecording) {
       setIsRecording(false);
-      // In a real app, we'd stop MediaRecorder and send blob to /api/stt
-      // Here we rely on the continuous SpeechRecognition if available
+      fingerprinterRef.current?.stop();
+      
+      // If we were enrolling, capture the fingerprint now
+      if (isEnrolling && receipt) {
+        const fingerprint = fingerprinterRef.current?.getFingerprint();
+        if (fingerprint) {
+          await saveRegular(fingerprint);
+        } else {
+          setEnrollmentStatus("Failed to capture voice. Try again.");
+          setTimeout(() => setEnrollmentStatus(''), 3000);
+        }
+        setIsEnrolling(false);
+        return;
+      }
+
+      // Normal voice interaction - try to identify
+      const fingerprint = fingerprinterRef.current?.getFingerprint();
+      if (fingerprint && !identifiedUser) {
+        identifyUser(fingerprint);
+      }
+
     } else {
       setIsRecording(true);
+      try {
+        await fingerprinterRef.current?.start();
+      } catch (e) {
+        alert("Could not access microphone. Please check your browser permissions.");
+        setIsRecording(false);
+        return;
+      }
+      
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
@@ -110,7 +155,9 @@ export default function Customer() {
           handleSend(transcript);
         };
         
-        recognition.onend = () => setIsRecording(false);
+        recognition.onend = () => {
+          if (!isEnrolling) setIsRecording(false); // Only stop UI if not enrolling manually
+        };
         recognition.start();
       } else {
         alert("Speech recognition not supported in this browser. Please use text mode.");
@@ -120,11 +167,63 @@ export default function Customer() {
     }
   };
 
+  const identifyUser = async (fingerprint: number[]) => {
+    try {
+      const res = await fetch('/api/identify-voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fingerprint })
+      });
+      const data = await res.json();
+      if (data.match) {
+        setIdentifiedUser(data.customer);
+        // Optional: Show a toast or visual indicator
+        console.log("Identified user:", data.customer.name);
+      }
+    } catch (e) {
+      console.error("Identification failed", e);
+    }
+  };
+
+  const saveRegular = async (fingerprint: number[]) => {
+    try {
+      setEnrollmentStatus("Saving profile...");
+      await fetch('/api/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: receipt.customer_name,
+          voice_fingerprint: fingerprint,
+          regular_order: receipt.items
+        })
+      });
+      setEnrollmentStatus("Profile saved! Next time, just say 'Give me the regular'.");
+    } catch (e) {
+      setEnrollmentStatus("Error saving profile.");
+    }
+  };
+
+  const startEnrollment = () => {
+    setIsEnrolling(true);
+    setEnrollmentStatus("Please say: 'My name is " + receipt.customer_name + " and this is my regular order.'");
+    toggleRecording(); // Start recording immediately
+  };
+
   return (
     <div className="max-w-2xl mx-auto h-[80vh] flex flex-col bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden relative">
-      <div className="bg-stone-900 text-white p-4 text-center font-medium tracking-wide flex items-center justify-center gap-2">
+      <div className="bg-stone-900 text-white p-4 text-center font-medium tracking-wide flex items-center justify-center gap-2 relative">
         <Coffee className="w-5 h-5" />
         NYC Coffee Kiosk
+        {identifiedUser && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="absolute right-4 flex items-center gap-1 text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded-full border border-emerald-500/50"
+          >
+            <Fingerprint className="w-3 h-3" />
+            Hi, {identifiedUser.name}
+          </motion.div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
@@ -186,11 +285,28 @@ export default function Customer() {
                 </div>
               )}
 
-              <div className="mt-8 text-center">
+              <div className="mt-8 text-center space-y-3">
                 <p className="text-stone-500 text-sm mb-4">Order for: <span className="font-bold text-stone-900">{receipt.customer_name}</span></p>
+                
+                {!identifiedUser && !isEnrolling && !enrollmentStatus && (
+                  <button
+                    onClick={startEnrollment}
+                    className="w-full flex items-center justify-center gap-2 bg-amber-100 text-amber-900 px-6 py-2 rounded-full font-medium hover:bg-amber-200 transition-colors text-sm"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    Save me as a Regular
+                  </button>
+                )}
+
+                {enrollmentStatus && (
+                  <div className="text-sm font-medium text-amber-600 animate-pulse">
+                    {enrollmentStatus}
+                  </div>
+                )}
+
                 <button 
                   onClick={() => { setReceipt(null); setWaitTime(null); setMessages([{ role: 'assistant', content: "Hi! Welcome to NYC Coffee. What can I get started for you today?" }]); }}
-                  className="bg-stone-900 text-white px-6 py-2 rounded-full font-medium hover:bg-stone-800 transition-colors"
+                  className="w-full bg-stone-900 text-white px-6 py-2 rounded-full font-medium hover:bg-stone-800 transition-colors"
                 >
                   Start New Order
                 </button>

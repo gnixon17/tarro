@@ -30,7 +30,7 @@ You are an efficient, friendly, and fast AI Cashier for a busy NYC coffee shop. 
 ${JSON.stringify(menuJson, null, 2)}
 `;
 
-export const processChatTurn = async (newMessages: Message[], customApiKey?: string) => {
+export const processChatTurn = async (newMessages: Message[], customApiKey?: string, context?: string) => {
   const apiKey = customApiKey || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is missing");
   
@@ -95,7 +95,7 @@ export const processChatTurn = async (newMessages: Message[], customApiKey?: str
     model: 'gemini-3.1-pro-preview',
     contents: formattedMessages,
     config: {
-      systemInstruction: SYSTEM_PROMPT,
+      systemInstruction: SYSTEM_PROMPT + (context ? `\n\n${context}` : ""),
       tools: [{ functionDeclarations: [finalizeOrderTool] }],
       temperature: 0.2
     }

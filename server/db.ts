@@ -34,6 +34,14 @@ db.exec(`
     price REAL NOT NULL,
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS customers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    voice_fingerprint TEXT NOT NULL, -- JSON array of frequency data
+    regular_order TEXT NOT NULL, -- JSON object of the order items
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 // Seed Data (only if empty)

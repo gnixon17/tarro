@@ -3,6 +3,7 @@ import Customer from './pages/Customer';
 import Barista from './pages/Barista';
 import Owner from './pages/Owner';
 import Settings from './pages/Settings';
+import Regulars from './pages/Regulars';
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
             <Link to="/" className="hover:text-amber-600 transition-colors">Customer Kiosk</Link>
             <Link to="/barista" className="hover:text-amber-600 transition-colors">Barista KDS</Link>
             <Link to="/owner" className="hover:text-amber-600 transition-colors">Owner Dashboard</Link>
+            <Link to="/regulars" className="hover:text-amber-600 transition-colors">Regulars</Link>
             <Link to="/settings" className="hover:text-amber-600 transition-colors">Test Runner</Link>
           </div>
         </nav>
@@ -22,6 +24,7 @@ export default function App() {
             <Route path="/" element={<Customer />} />
             <Route path="/barista" element={<Barista />} />
             <Route path="/owner" element={<Owner />} />
+            <Route path="/regulars" element={<Regulars />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
