@@ -219,6 +219,12 @@ export default function Customer() {
         })
       });
       setEnrollmentStatus("Profile saved! Next time, just say 'Give me the regular'.");
+      
+      // Immediately identify the user after saving
+      setIdentifiedUser({
+        name: receipt.customer_name,
+        regular_order: receipt.items
+      });
     } catch (e) {
       setEnrollmentStatus("Error saving profile.");
     }

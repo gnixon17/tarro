@@ -57,7 +57,7 @@ apiRouter.post('/identify-voice', async (req, res) => {
 
   console.log(`[POST /identify-voice] Comparing against ${customers?.length || 0} customers...`);
 
-  const MATCH_THRESHOLD = 1500;
+  const MATCH_THRESHOLD = 2500;
   
   if (customers) {
     for (const customer of customers) {
