@@ -23,8 +23,8 @@ export default function BaristaView() {
 
   const updateStatus = async (id: string, newStatus: string) => {
     try {
-      await fetch(\`/api/orders/\${id}/status\`, {
-        method: 'PUT',
+      await fetch(`/api/orders/${id}/status`, {
+        method: 'PATCH', // Changed to PATCH to match routes.ts
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
@@ -65,7 +65,7 @@ export default function BaristaView() {
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <div className="font-bold text-lg">{order.customer_name}</div>
-                      <div className="text-xs text-stone-400 font-mono mt-0.5">#{order.id.split('_')[1]}</div>
+                      <div className="text-xs text-stone-400 font-mono mt-0.5">#{order.id.split('-')[0]}</div>
                     </div>
                     <div className="flex items-center text-xs text-stone-500 gap-1 bg-stone-100 px-2 py-1 rounded-md">
                       <Clock className="w-3 h-3" />
@@ -78,14 +78,16 @@ export default function BaristaView() {
                       <div key={item.id} className="text-sm">
                         <div className="font-medium flex gap-2">
                           <span className="text-stone-400">{item.quantity}x</span>
-                          <span>{item.size} {item.temperature} {item.name}</span>
+                          <span>{item.size} {item.temperature} {item.product_name}</span>
                         </div>
                         <div className="pl-6 text-xs text-stone-500 mt-1 space-y-0.5">
-                          {item.milk_type && <div>• {item.milk_type}</div>}
-                          {item.syrups && <div>• {item.syrups}</div>}
-                          {item.sweetness_level && <div>• {item.sweetness_level} Sweet</div>}
-                          {item.ice_level && <div>• {item.ice_level}</div>}
-                          {item.espresso_shots > 1 && <div>• {item.espresso_shots} Shots</div>}
+                          {item.milk && <div>• {item.milk}</div>}
+                          {item.add_ons && Array.isArray(item.add_ons) && item.add_ons.length > 0 && (
+                            <div>• {item.add_ons.join(', ')}</div>
+                          )}
+                          {item.sweetness && <div>• {item.sweetness} Sweet</div>}
+                          {item.ice && <div>• {item.ice}</div>}
+                          {item.special_instructions && <div className="text-amber-600 italic">• Note: {item.special_instructions}</div>}
                         </div>
                       </div>
                     ))}

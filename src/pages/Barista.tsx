@@ -187,7 +187,8 @@ export default function Barista() {
                     </div>
                     <ul className="space-y-3">
                       {order.items.map(item => {
-                        const mods = [item.milk, item.sweetness, item.ice, ...(JSON.parse(item.add_ons || '[]'))].filter(Boolean);
+                        const addOns = Array.isArray(item.add_ons) ? item.add_ons : JSON.parse(item.add_ons || '[]');
+                        const mods = [item.milk, item.sweetness, item.ice, ...addOns].filter(Boolean);
                         return (
                           <li key={item.id} className="text-sm">
                             <div className="font-medium flex items-start gap-2">

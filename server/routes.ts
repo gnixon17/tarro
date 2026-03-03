@@ -1,68 +1,86 @@
 import { Router } from 'express';
-import { db, Order, OrderItem } from './db.js';
-import { randomUUID } from 'crypto';
+import { supabase, Order, OrderItem } from './db.js';
 
 export const apiRouter = Router();
 
 // Customer Management
-apiRouter.post('/customers', (req, res) => {
+apiRouter.post('/customers', async (req, res) => {
   console.log('[POST /customers] Saving new customer...');
   const { name, voice_fingerprint, regular_order } = req.body;
-  const id = randomUUID();
   
   try {
-    db.prepare('INSERT INTO customers (id, name, voice_fingerprint, regular_order) VALUES (?, ?, ?, ?)').run(
-      id, name, JSON.stringify(voice_fingerprint), JSON.stringify(regular_order)
-    );
-    console.log(`[POST /customers] Saved customer: ${name} (${id})`);
-    res.json({ id });
+    const { data, error } = await supabase
+      .from('customers')
+      .insert({
+        name,
+        voice_fingerprint, // Supabase handles JSON automatically
+        regular_order      // Supabase handles JSON automatically
+      })
+      .select('id')
+      .single();
+
+    if (error) throw error;
+    
+    console.log(`[POST /customers] Saved customer: ${name} (${data.id})`);
+    res.json({ id: data.id });
   } catch (err) {
     console.error('[POST /customers] Error:', err);
     res.status(500).json({ error: 'Failed to save customer' });
   }
 });
 
-apiRouter.get('/customers', (req, res) => {
-  const customers = db.prepare('SELECT * FROM customers ORDER BY created_at DESC').all();
-  res.json(customers);
+apiRouter.get('/customers', async (req, res) => {
+  const { data, error } = await supabase
+    .from('customers')
+    .select('*')
+    .order('created_at', { ascending: false });
+    
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
 });
 
-apiRouter.post('/identify-voice', (req, res) => {
+apiRouter.post('/identify-voice', async (req, res) => {
   const { fingerprint } = req.body; // Array of numbers (FFT data)
   
   if (!fingerprint || !Array.isArray(fingerprint)) {
     return res.status(400).json({ error: "Invalid fingerprint data" });
   }
 
-  const customers = db.prepare('SELECT * FROM customers').all() as any[];
+  // Fetch all customers to compare in memory (simple Euclidean distance)
+  // For production, use pgvector in Supabase
+  const { data: customers, error } = await supabase.from('customers').select('*');
+  
+  if (error) return res.status(500).json({ error: error.message });
+
   let bestMatch = null;
   let minDistance = Infinity;
 
-  console.log(`[POST /identify-voice] Comparing against ${customers.length} customers...`);
+  console.log(`[POST /identify-voice] Comparing against ${customers?.length || 0} customers...`);
 
-  // Simple Euclidean distance comparison
-  for (const customer of customers) {
-    const storedPrint = JSON.parse(customer.voice_fingerprint);
-    
-    // Ensure dimensions match (truncate to shorter length)
-    const len = Math.min(fingerprint.length, storedPrint.length);
-    let sumSqDiff = 0;
-    
-    for (let i = 0; i < len; i++) {
-      sumSqDiff += Math.pow(fingerprint[i] - storedPrint[i], 2);
-    }
-    
-    const distance = Math.sqrt(sumSqDiff);
-    console.log(` - Distance to ${customer.name}: ${distance.toFixed(2)}`);
-    
-    if (distance < minDistance) {
-      minDistance = distance;
-      bestMatch = customer;
+  if (customers) {
+    for (const customer of customers) {
+      // Supabase returns JSON columns as objects/arrays automatically
+      const storedPrint = customer.voice_fingerprint;
+      
+      if (!Array.isArray(storedPrint)) continue;
+
+      const len = Math.min(fingerprint.length, storedPrint.length);
+      let sumSqDiff = 0;
+      
+      for (let i = 0; i < len; i++) {
+        sumSqDiff += Math.pow(fingerprint[i] - storedPrint[i], 2);
+      }
+      
+      const distance = Math.sqrt(sumSqDiff);
+      console.log(` - Distance to ${customer.name}: ${distance.toFixed(2)}`);
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        bestMatch = customer;
+      }
     }
   }
 
-  // Threshold: If the closest match is still very far, it's not a match.
-  // Tuned to 1500 based on heuristic
   const MATCH_THRESHOLD = 1500;
 
   if (bestMatch && minDistance < MATCH_THRESHOLD) {
@@ -71,7 +89,7 @@ apiRouter.post('/identify-voice', (req, res) => {
       match: true, 
       customer: { 
         name: bestMatch.name, 
-        regular_order: JSON.parse(bestMatch.regular_order) 
+        regular_order: bestMatch.regular_order 
       },
       confidence: 1 - (minDistance / MATCH_THRESHOLD)
     });
@@ -82,47 +100,48 @@ apiRouter.post('/identify-voice', (req, res) => {
 });
 
 // Orders CRUD
-apiRouter.get('/orders', (req, res) => {
-  const orders = db.prepare('SELECT * FROM orders ORDER BY created_at DESC').all() as Order[];
-  const items = db.prepare('SELECT * FROM order_items').all() as OrderItem[];
-  
-  const ordersWithItems = orders.map(order => ({
-    ...order,
-    items: items.filter(item => item.order_id === order.id)
-  }));
-  
-  res.json(ordersWithItems);
+apiRouter.get('/orders', async (req, res) => {
+  // Fetch orders with their items using Supabase foreign key relation
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*, items:order_items(*)')
+    .order('created_at', { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
 });
 
-apiRouter.post('/orders', (req, res) => {
+apiRouter.post('/orders', async (req, res) => {
   const { customer_name, total_price, items } = req.body;
-  const orderId = randomUUID();
   
-  const insertOrder = db.prepare('INSERT INTO orders (id, created_at, customer_name, total_price) VALUES (?, ?, ?, ?)');
-  const insertItem = db.prepare('INSERT INTO order_items (id, order_id, product_name, quantity, size, temperature, milk, sweetness, ice, add_ons, special_instructions, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-  
-  const createdAt = new Date().toISOString();
+  try {
+    // Use the RPC function we created to handle the transaction
+    const { data, error } = await supabase.rpc('create_order_with_items', {
+      p_customer_name: customer_name,
+      p_total_price: total_price,
+      p_items: items
+    });
 
-  db.transaction(() => {
-    insertOrder.run(orderId, createdAt, customer_name, total_price);
-    for (const item of items) {
-      insertItem.run(
-        randomUUID(), orderId, item.product_name, item.quantity, 
-        item.size || null, item.temperature || null, item.milk || null, item.sweetness || null, 
-        item.ice || null, JSON.stringify(item.add_ons || []), item.special_instructions || null, item.price
-      );
-    }
-  })();
-  
-  res.json({ id: orderId });
+    if (error) throw error;
+    
+    res.json({ id: data });
+  } catch (err: any) {
+    console.error('Order creation failed:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-apiRouter.get('/queue-status', (req, res) => {
-  const activeOrders = db.prepare("SELECT * FROM orders WHERE status IN ('NEW', 'IN_PROGRESS')").all() as Order[];
-  const items = db.prepare("SELECT * FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE status IN ('NEW', 'IN_PROGRESS'))").all() as OrderItem[];
-  
-  const queueDepth = items.reduce((acc, item) => acc + item.quantity, 0);
-  // Estimate: 2 minutes per item + 1 minute base buffer
+apiRouter.get('/queue-status', async (req, res) => {
+  // Get all active items to calculate wait time
+  // We need to join orders to filter by status
+  const { data: activeItems, error } = await supabase
+    .from('order_items')
+    .select('quantity, orders!inner(status)')
+    .in('orders.status', ['NEW', 'IN_PROGRESS']);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const queueDepth = activeItems?.reduce((acc, item) => acc + item.quantity, 0) || 0;
   const estimatedWaitTime = Math.max(2, queueDepth * 2); 
   
   res.json({
@@ -131,111 +150,135 @@ apiRouter.get('/queue-status', (req, res) => {
   });
 });
 
-apiRouter.patch('/orders/:id/status', (req, res) => {
+apiRouter.patch('/orders/:id/status', async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
-  db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, id);
+  
+  const { error } = await supabase
+    .from('orders')
+    .update({ status })
+    .eq('id', id);
+
+  if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });
 
 // Dashboard Metrics
-apiRouter.get('/metrics', (req, res) => {
-  // Use a date filter for "today" (or just all time for this demo, but let's do all time to ensure seed data shows up)
-  // In a real app, you'd add: WHERE date(created_at) = date('now')
+apiRouter.get('/metrics', async (req, res) => {
+  // Fetch all completed orders and items to aggregate in memory
+  // This is safer than complex SQL without views
+  const { data: orders, error } = await supabase
+    .from('orders')
+    .select('*, items:order_items(*)')
+    .eq('status', 'COMPLETED');
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  if (!orders || orders.length === 0) {
+    return res.json({
+      revenue: 0, orders: 0, aov: 0, dodGrowth: 0, topItems: [],
+      peakHour: 'N/A', oatMilkRate: 0, syrupRate: 0, avgItemsPerOrder: 0,
+      avgModsPerDrink: 0, anomalyFlag: null
+    });
+  }
+
+  // 1. Revenue & Counts
+  const totalRevenue = orders.reduce((sum, o) => sum + (o.total_price || 0), 0);
+  const totalOrders = orders.length;
+  const aov = totalRevenue / totalOrders;
+
+  // 2. Top Items
+  const itemCounts: Record<string, number> = {};
+  let totalItems = 0;
+  let totalDrinks = 0;
+  let oatMilkCount = 0;
+  let syrupCount = 0;
+  let totalMods = 0;
+
+  orders.forEach(order => {
+    order.items.forEach((item: any) => {
+      // Top Items
+      itemCounts[item.product_name] = (itemCounts[item.product_name] || 0) + item.quantity;
+      totalItems += item.quantity;
+
+      // Modifiers Stats
+      if (item.size) { // It's a drink
+        totalDrinks += item.quantity;
+        if (item.milk === 'Oat Milk') oatMilkCount += item.quantity;
+        
+        // Check add_ons (JSON or string)
+        const hasAddOns = Array.isArray(item.add_ons) ? item.add_ons.length > 0 : false;
+        if (hasAddOns) syrupCount += item.quantity;
+
+        // Count mods
+        let mods = 0;
+        if (item.milk) mods++;
+        if (item.sweetness) mods++;
+        if (item.ice) mods++;
+        if (hasAddOns) mods++;
+        totalMods += (mods * item.quantity);
+      }
+    });
+  });
+
+  const topItems = Object.entries(itemCounts)
+    .map(([product_name, count]) => ({ product_name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
+
+  // 3. Peak Hour
+  const hourCounts: Record<string, number> = {};
+  orders.forEach(order => {
+    const hour = new Date(order.created_at).getHours();
+    hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+  });
   
-  const totalRevenue = db.prepare("SELECT SUM(total_price) as total FROM orders WHERE status = 'COMPLETED'").get() as { total: number };
-  const totalOrders = db.prepare("SELECT COUNT(*) as count FROM orders WHERE status = 'COMPLETED'").get() as { count: number };
-  
-  // Day-over-Day Revenue (Mocking yesterday's revenue for demo purposes since we only have today's seed data)
-  const yesterdayRevenue = db.prepare("SELECT SUM(total_price) as total FROM orders WHERE status = 'COMPLETED' AND date(created_at) = date('now', '-1 day')").get() as { total: number };
-  const dodGrowth = yesterdayRevenue.total ? ((totalRevenue.total || 0) - yesterdayRevenue.total) / yesterdayRevenue.total : 0.15; // 15% mock growth if no yesterday data
-  
-  const topItems = db.prepare(`
-    SELECT product_name, SUM(quantity) as count 
-    FROM order_items 
-    JOIN orders ON orders.id = order_items.order_id 
-    WHERE orders.status = 'COMPLETED' 
-    GROUP BY product_name 
-    ORDER BY count DESC 
-    LIMIT 3
-  `).all();
+  const peakHourInt = Object.entries(hourCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const peakHour = peakHourInt ? `${peakHourInt.padStart(2, '0')}:00` : 'N/A';
 
-  const peakHour = db.prepare(`
-    SELECT strftime('%H', created_at) as hour, COUNT(*) as count 
-    FROM orders 
-    WHERE status = 'COMPLETED' 
-    GROUP BY hour 
-    ORDER BY count DESC 
-    LIMIT 1
-  `).get() as { hour: string, count: number } | undefined;
-
-  const oatMilkStats = db.prepare(`
-    SELECT 
-      CAST(SUM(CASE WHEN milk = 'Oat Milk' THEN quantity ELSE 0 END) AS FLOAT) / SUM(quantity) as rate 
-    FROM order_items 
-    JOIN orders ON orders.id = order_items.order_id 
-    WHERE orders.status = 'COMPLETED'
-  `).get() as { rate: number };
-
-  const syrupStats = db.prepare(`
-    SELECT 
-      CAST(SUM(CASE WHEN add_ons != '[]' AND add_ons IS NOT NULL THEN quantity ELSE 0 END) AS FLOAT) / SUM(quantity) as rate 
-    FROM order_items 
-    JOIN orders ON orders.id = order_items.order_id 
-    WHERE orders.status = 'COMPLETED'
-  `).get() as { rate: number };
-
-  const avgItemsPerOrder = db.prepare(`
-    SELECT CAST(SUM(quantity) AS FLOAT) / COUNT(DISTINCT orders.id) as avg_items 
-    FROM order_items 
-    JOIN orders ON orders.id = order_items.order_id 
-    WHERE orders.status = 'COMPLETED'
-  `).get() as { avg_items: number };
-
-  const avgModsPerDrink = db.prepare(`
-    SELECT AVG(
-      (CASE WHEN milk IS NOT NULL THEN 1 ELSE 0 END) + 
-      (CASE WHEN sweetness IS NOT NULL THEN 1 ELSE 0 END) + 
-      (CASE WHEN ice IS NOT NULL THEN 1 ELSE 0 END) + 
-      (CASE WHEN add_ons != '[]' AND add_ons IS NOT NULL THEN 1 ELSE 0 END)
-    ) as avg_mods 
-    FROM order_items 
-    JOIN orders ON orders.id = order_items.order_id 
-    WHERE orders.status = 'COMPLETED' AND size IS NOT NULL -- only count drinks, not pastries
-  `).get() as { avg_mods: number };
+  // 4. Rates
+  const oatMilkRate = totalDrinks ? oatMilkCount / totalDrinks : 0;
+  const syrupRate = totalDrinks ? syrupCount / totalDrinks : 0;
+  const avgItemsPerOrder = totalItems / totalOrders;
+  const avgModsPerDrink = totalDrinks ? totalMods / totalDrinks : 0;
 
   res.json({
-    revenue: totalRevenue.total || 0,
-    orders: totalOrders.count || 0,
-    aov: totalOrders.count ? (totalRevenue.total / totalOrders.count) : 0,
-    dodGrowth: dodGrowth,
+    revenue: totalRevenue,
+    orders: totalOrders,
+    aov,
+    dodGrowth: 0.15, // Mocked for now
     topItems,
-    peakHour: peakHour ? `${peakHour.hour}:00` : 'N/A',
-    oatMilkRate: oatMilkStats.rate || 0,
-    syrupRate: syrupStats.rate || 0,
-    avgItemsPerOrder: avgItemsPerOrder.avg_items || 0,
-    avgModsPerDrink: avgModsPerDrink.avg_mods || 0,
-    anomalyFlag: (avgModsPerDrink.avg_mods || 0) > 2.5 ? 'High Customization Load' : null
+    peakHour,
+    oatMilkRate,
+    syrupRate,
+    avgItemsPerOrder,
+    avgModsPerDrink,
+    anomalyFlag: avgModsPerDrink > 2.5 ? 'High Customization Load' : null
   });
 });
 
 // Export CSV
-apiRouter.get('/export', (req, res) => {
-  const orders = db.prepare('SELECT * FROM orders').all() as Order[];
-  const items = db.prepare('SELECT * FROM order_items').all() as OrderItem[];
-  
+apiRouter.get('/export', async (req, res) => {
+  const { data: orders, error } = await supabase
+    .from('orders')
+    .select('*, items:order_items(*)')
+    .order('created_at', { ascending: false });
+
+  if (error) return res.status(500).send('Error fetching data');
+
   let csv = 'order_id,created_at,status,customer_name,total_price,items\n';
   
-  for (const order of orders) {
-    const orderItems = items.filter(i => i.order_id === order.id);
-    const itemsStr = orderItems.map(i => {
-      let desc = `${i.quantity}x ${i.size || ''} ${i.temperature || ''} ${i.product_name}`.trim();
-      const mods = [i.milk, i.sweetness, i.ice].filter(Boolean);
-      if (mods.length > 0) desc += ` (${mods.join(', ')})`;
-      return desc;
-    }).join('; ');
-    
-    csv += `${order.id},${order.created_at},${order.status},${order.customer_name},${order.total_price},"${itemsStr}"\n`;
+  if (orders) {
+    for (const order of orders) {
+      const itemsStr = order.items.map((i: any) => {
+        let desc = `${i.quantity}x ${i.size || ''} ${i.temperature || ''} ${i.product_name}`.trim();
+        const mods = [i.milk, i.sweetness, i.ice].filter(Boolean);
+        if (mods.length > 0) desc += ` (${mods.join(', ')})`;
+        return desc;
+      }).join('; ');
+      
+      csv += `${order.id},${order.created_at},${order.status},${order.customer_name},${order.total_price},"${itemsStr}"\n`;
+    }
   }
   
   res.header('Content-Type', 'text/csv');
@@ -271,6 +314,7 @@ apiRouter.post('/tts', async (req, res) => {
     if (!response.ok) throw new Error('ElevenLabs API error');
     
     res.setHeader('Content-Type', 'audio/mpeg');
+    // @ts-ignore
     response.body?.pipeTo(new WritableStream({
       write(chunk) { res.write(chunk); },
       close() { res.end(); }
