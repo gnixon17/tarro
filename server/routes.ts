@@ -6,14 +6,20 @@ export const apiRouter = Router();
 
 // Customer Management
 apiRouter.post('/customers', (req, res) => {
+  console.log('[POST /customers] Saving new customer...');
   const { name, voice_fingerprint, regular_order } = req.body;
   const id = randomUUID();
   
-  db.prepare('INSERT INTO customers (id, name, voice_fingerprint, regular_order) VALUES (?, ?, ?, ?)').run(
-    id, name, JSON.stringify(voice_fingerprint), JSON.stringify(regular_order)
-  );
-  
-  res.json({ id });
+  try {
+    db.prepare('INSERT INTO customers (id, name, voice_fingerprint, regular_order) VALUES (?, ?, ?, ?)').run(
+      id, name, JSON.stringify(voice_fingerprint), JSON.stringify(regular_order)
+    );
+    console.log(`[POST /customers] Saved customer: ${name} (${id})`);
+    res.json({ id });
+  } catch (err) {
+    console.error('[POST /customers] Error:', err);
+    res.status(500).json({ error: 'Failed to save customer' });
+  }
 });
 
 apiRouter.get('/customers', (req, res) => {
@@ -32,6 +38,8 @@ apiRouter.post('/identify-voice', (req, res) => {
   let bestMatch = null;
   let minDistance = Infinity;
 
+  console.log(`[POST /identify-voice] Comparing against ${customers.length} customers...`);
+
   // Simple Euclidean distance comparison
   for (const customer of customers) {
     const storedPrint = JSON.parse(customer.voice_fingerprint);
@@ -45,9 +53,8 @@ apiRouter.post('/identify-voice', (req, res) => {
     }
     
     const distance = Math.sqrt(sumSqDiff);
+    console.log(` - Distance to ${customer.name}: ${distance.toFixed(2)}`);
     
-    // Threshold for "match" (heuristic value, needs tuning)
-    // For normalized FFT data (0-255), a distance of < 500 might be a match depending on vector length
     if (distance < minDistance) {
       minDistance = distance;
       bestMatch = customer;
@@ -55,17 +62,21 @@ apiRouter.post('/identify-voice', (req, res) => {
   }
 
   // Threshold: If the closest match is still very far, it's not a match.
-  // Let's say max distance is 2000 for a vector of length 128 (approx 15 diff per bin on avg)
-  if (bestMatch && minDistance < 2000) {
+  // Tuned to 1500 based on heuristic
+  const MATCH_THRESHOLD = 1500;
+
+  if (bestMatch && minDistance < MATCH_THRESHOLD) {
+    console.log(`[POST /identify-voice] MATCH FOUND: ${bestMatch.name} (Dist: ${minDistance.toFixed(2)})`);
     res.json({ 
       match: true, 
       customer: { 
         name: bestMatch.name, 
         regular_order: JSON.parse(bestMatch.regular_order) 
       },
-      confidence: 1 - (minDistance / 2000)
+      confidence: 1 - (minDistance / MATCH_THRESHOLD)
     });
   } else {
+    console.log(`[POST /identify-voice] No match found. Best was ${bestMatch?.name} at ${minDistance.toFixed(2)}`);
     res.json({ match: false });
   }
 });

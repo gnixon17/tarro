@@ -17,6 +17,7 @@ export default function Customer() {
   const [identifiedUser, setIdentifiedUser] = useState<any>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
   const [enrollmentStatus, setEnrollmentStatus] = useState<string>('');
+  const [identificationStatus, setIdentificationStatus] = useState<string>('');
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fingerprinterRef = useRef<AudioFingerprinter | null>(null);
@@ -185,6 +186,7 @@ export default function Customer() {
 
   const identifyUser = async (fingerprint: number[]) => {
     try {
+      setIdentificationStatus("Identifying...");
       const res = await fetch('/api/identify-voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -193,11 +195,14 @@ export default function Customer() {
       const data = await res.json();
       if (data.match) {
         setIdentifiedUser(data.customer);
-        // Optional: Show a toast or visual indicator
-        console.log("Identified user:", data.customer.name);
+        setIdentificationStatus(`Welcome back, ${data.customer.name}!`);
+        setTimeout(() => setIdentificationStatus(''), 3000);
+      } else {
+        setIdentificationStatus('');
       }
     } catch (e) {
       console.error("Identification failed", e);
+      setIdentificationStatus('');
     }
   };
 
@@ -234,11 +239,23 @@ export default function Customer() {
           <motion.div 
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="absolute right-4 flex items-center gap-1 text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded-full border border-emerald-500/50"
+            className="absolute right-4 flex items-center gap-1 text-xs bg-emerald-500/20 text-emerald-300 px-2 py-1 rounded-full border border-emerald-500/50 cursor-pointer hover:bg-emerald-500/30"
+            onClick={() => {
+              if (confirm("Sign out?")) {
+                setIdentifiedUser(null);
+                setIdentificationStatus("Signed out.");
+                setTimeout(() => setIdentificationStatus(''), 2000);
+              }
+            }}
           >
             <Fingerprint className="w-3 h-3" />
             Hi, {identifiedUser.name}
           </motion.div>
+        )}
+        {identificationStatus && !identifiedUser && (
+          <div className="absolute right-4 text-xs text-stone-400 animate-pulse">
+            {identificationStatus}
+          </div>
         )}
       </div>
 
