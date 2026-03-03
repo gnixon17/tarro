@@ -68,7 +68,7 @@ export default function Customer() {
     }
   };
 
-  const handleSend = async (text: string) => {
+  const handleSend = async (text: string, identityPromise?: Promise<any>) => {
     if (!text.trim()) return;
     if (isEnrollingRef.current) return; // Don't process chat if enrolling
     
@@ -78,9 +78,20 @@ export default function Customer() {
     setIsLoading(true);
 
     try {
+      let currentUser = identifiedUser;
+
+      // If we are waiting for identification, await it
+      if (identityPromise) {
+         const foundUser = await identityPromise;
+         if (foundUser) {
+            currentUser = foundUser;
+            // State update happens in identifyUser, but we use the local var for immediate context
+         }
+      }
+
       // Pass identified user context if available
-      const context = identifiedUser 
-        ? `[SYSTEM: The user has been identified by voice as ${identifiedUser.name}. Their regular order is: ${JSON.stringify(identifiedUser.regular_order)}.]`
+      const context = currentUser 
+        ? `[SYSTEM: The user has been identified by voice as ${currentUser.name}. Their regular order is: ${JSON.stringify(currentUser.regular_order)}.]`
         : undefined;
 
       const data = await processChatTurn(newMessages, undefined, context);
@@ -120,27 +131,10 @@ export default function Customer() {
   };
 
   const processAudioAndStop = async () => {
+    // This function is now mainly for manual stop or cleanup
+    // The main logic is moved to recognition.onend
     setIsRecording(false);
     fingerprinterRef.current?.stop();
-
-    // Enrollment Logic
-    if (isEnrollingRef.current && receipt) {
-      const fingerprint = fingerprinterRef.current?.getFingerprint();
-      if (fingerprint) {
-        await saveRegular(fingerprint);
-      } else {
-        setEnrollmentStatus("Failed to capture voice. Try again.");
-        setTimeout(() => setEnrollmentStatus(''), 3000);
-      }
-      setIsEnrolling(false);
-      return;
-    }
-
-    // Identification Logic
-    const fingerprint = fingerprinterRef.current?.getFingerprint();
-    if (fingerprint && !identifiedUser) {
-      identifyUser(fingerprint);
-    }
   };
 
   const toggleRecording = async () => {
@@ -162,17 +156,36 @@ export default function Customer() {
         recognition.continuous = false;
         recognition.interimResults = false;
         
+        let transcript = '';
+
         recognition.onresult = (event: any) => {
-          const transcript = event.results[0][0].transcript;
-          handleSend(transcript);
+          transcript = event.results[0][0].transcript;
         };
         
-        recognition.onend = () => {
-          // If enrolling, we treat the end of speech as the trigger to save
+        recognition.onend = async () => {
+          setIsRecording(false);
+          const fingerprint = fingerprinterRef.current?.getFingerprint();
+          fingerprinterRef.current?.stop();
+
           if (isEnrollingRef.current) {
-             processAudioAndStop(); 
+             // Enrollment Logic
+             if (receipt && fingerprint) {
+                await saveRegular(fingerprint);
+             } else {
+                setEnrollmentStatus("Failed to capture voice. Try again.");
+                setTimeout(() => setEnrollmentStatus(''), 3000);
+             }
+             setIsEnrolling(false);
           } else {
-             setIsRecording(false);
+             // Identification & Chat Logic
+             let identityPromise;
+             if (fingerprint && !identifiedUser) {
+                identityPromise = identifyUser(fingerprint);
+             }
+             
+             if (transcript) {
+                handleSend(transcript, identityPromise);
+             }
           }
         };
         recognition.start();
@@ -197,12 +210,15 @@ export default function Customer() {
         setIdentifiedUser(data.customer);
         setIdentificationStatus(`Welcome back, ${data.customer.name}!`);
         setTimeout(() => setIdentificationStatus(''), 3000);
+        return data.customer;
       } else {
         setIdentificationStatus('');
+        return null;
       }
     } catch (e) {
       console.error("Identification failed", e);
       setIdentificationStatus('');
+      return null;
     }
   };
 
