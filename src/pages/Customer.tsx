@@ -21,6 +21,13 @@ export default function Customer() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const fingerprinterRef = useRef<AudioFingerprinter | null>(null);
 
+  const isEnrollingRef = useRef(false);
+
+  // Sync ref with state
+  useEffect(() => {
+    isEnrollingRef.current = isEnrolling;
+  }, [isEnrolling]);
+
   // Initialize Audio Fingerprinter
   useEffect(() => {
     fingerprinterRef.current = new AudioFingerprinter();
@@ -62,6 +69,7 @@ export default function Customer() {
 
   const handleSend = async (text: string) => {
     if (!text.trim()) return;
+    if (isEnrollingRef.current) return; // Don't process chat if enrolling
     
     const newMessages = [...messages, { role: 'user' as const, content: text }];
     setMessages(newMessages);
@@ -110,30 +118,33 @@ export default function Customer() {
     }
   };
 
+  const processAudioAndStop = async () => {
+    setIsRecording(false);
+    fingerprinterRef.current?.stop();
+
+    // Enrollment Logic
+    if (isEnrollingRef.current && receipt) {
+      const fingerprint = fingerprinterRef.current?.getFingerprint();
+      if (fingerprint) {
+        await saveRegular(fingerprint);
+      } else {
+        setEnrollmentStatus("Failed to capture voice. Try again.");
+        setTimeout(() => setEnrollmentStatus(''), 3000);
+      }
+      setIsEnrolling(false);
+      return;
+    }
+
+    // Identification Logic
+    const fingerprint = fingerprinterRef.current?.getFingerprint();
+    if (fingerprint && !identifiedUser) {
+      identifyUser(fingerprint);
+    }
+  };
+
   const toggleRecording = async () => {
     if (isRecording) {
-      setIsRecording(false);
-      fingerprinterRef.current?.stop();
-      
-      // If we were enrolling, capture the fingerprint now
-      if (isEnrolling && receipt) {
-        const fingerprint = fingerprinterRef.current?.getFingerprint();
-        if (fingerprint) {
-          await saveRegular(fingerprint);
-        } else {
-          setEnrollmentStatus("Failed to capture voice. Try again.");
-          setTimeout(() => setEnrollmentStatus(''), 3000);
-        }
-        setIsEnrolling(false);
-        return;
-      }
-
-      // Normal voice interaction - try to identify
-      const fingerprint = fingerprinterRef.current?.getFingerprint();
-      if (fingerprint && !identifiedUser) {
-        identifyUser(fingerprint);
-      }
-
+      await processAudioAndStop();
     } else {
       setIsRecording(true);
       try {
@@ -156,7 +167,12 @@ export default function Customer() {
         };
         
         recognition.onend = () => {
-          if (!isEnrolling) setIsRecording(false); // Only stop UI if not enrolling manually
+          // If enrolling, we treat the end of speech as the trigger to save
+          if (isEnrollingRef.current) {
+             processAudioAndStop(); 
+          } else {
+             setIsRecording(false);
+          }
         };
         recognition.start();
       } else {
