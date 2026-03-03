@@ -14,7 +14,13 @@ export default function Owner() {
 
   useEffect(() => {
     fetch('/api/metrics')
-      .then(res => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+          throw new Error(err.error || 'Failed to fetch metrics');
+        }
+        return res.json();
+      })
       .then(async (data) => {
         setMetrics(data);
         // Proactive Pulse Check
@@ -25,6 +31,10 @@ export default function Owner() {
         } catch (e) {
           console.error("Failed to get insight", e);
         }
+      })
+      .catch(err => {
+        console.error("Dashboard Error:", err);
+        setMetrics({ error: err.message });
       });
   }, []);
 
@@ -51,6 +61,24 @@ export default function Owner() {
   };
 
   if (!metrics) return <div className="p-8 text-center text-stone-500">Loading dashboard...</div>;
+  
+  if (metrics.error) {
+    return (
+      <div className="p-8 text-center">
+        <div className="bg-red-50 text-red-800 p-4 rounded-lg inline-block text-left max-w-md">
+          <h3 className="font-bold mb-2 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5" />
+            Dashboard Error
+          </h3>
+          <p className="mb-4">{metrics.error}</p>
+          <p className="text-sm opacity-80">
+            If you just set up Supabase, you might need to run the database schema migration.
+            Check the "SQL Editor" in your Supabase dashboard.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-6xl mx-auto pb-12 relative">
