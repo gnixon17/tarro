@@ -1,0 +1,5 @@
+{
+  "name": "AI Voice Cashier",
+  "description": "An AI voice cashier for a coffee shop with customer, barista, and owner views.",
+  "requestFramePermissions": ["microphone"]
+}

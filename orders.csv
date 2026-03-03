@@ -1,0 +1,6 @@
+order_id,created_at,status,customer_name,total_price,items
+ord_1001,2023-10-27T08:00:00Z,COMPLETED,Alice,5.25,"1x Medium Iced Latte (Oat Milk, 50% Sweetness)"
+ord_1002,2023-10-27T08:05:00Z,COMPLETED,Bob,3.50,"1x Butter Croissant"
+ord_1003,2023-10-27T08:10:00Z,IN_PROGRESS,Charlie,6.00,"1x Large Frappuccino (Extra Ice, Caramel Syrup)"
+ord_1004,2023-10-27T08:15:00Z,NEW,Diana,8.50,"1x Small Hot Americano (Black), 1x Matcha Latte (Almond Milk)"
+ord_1005,2023-10-27T08:20:00Z,NEW,Evan,4.00,"1x Medium Cold Brew (Light Ice)"
