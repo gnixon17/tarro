@@ -2,58 +2,48 @@
   "categories": [
     {
       "id": "cat_coffee",
-      "name": "Coffee & Espresso",
+      "name": "Coffee",
       "items": [
-        { "id": "item_latte", "name": "Latte", "basePrice": 4.50, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" },
-        { "id": "item_americano", "name": "Americano", "basePrice": 3.50, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" },
-        { "id": "item_cappuccino", "name": "Cappuccino", "basePrice": 4.50, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" },
-        { "id": "item_frappuccino", "name": "Frappuccino", "basePrice": 5.50, "allowsSize": true, "allowsTemp": false, "defaultTemp": "ICED" },
-        { "id": "item_cold_brew", "name": "Cold Brew", "basePrice": 4.00, "allowsSize": true, "allowsTemp": false, "defaultTemp": "ICED" }
+        { "id": "item_americano", "name": "Americano", "prices": { "Small": 3.00, "Large": 4.00 }, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" },
+        { "id": "item_latte", "name": "Latte", "prices": { "Small": 4.00, "Large": 5.00 }, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" },
+        { "id": "item_cold_brew", "name": "Cold Brew", "prices": { "Small": 4.00, "Large": 5.00 }, "allowsSize": true, "allowsTemp": false, "defaultTemp": "ICED" },
+        { "id": "item_mocha", "name": "Mocha", "prices": { "Small": 4.50, "Large": 5.50 }, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" },
+        { "id": "item_frappuccino", "name": "Coffee Frappuccino", "prices": { "Small": 5.50, "Large": 6.00 }, "allowsSize": true, "allowsTemp": false, "defaultTemp": "ICED" }
       ]
     },
     {
       "id": "cat_tea",
-      "name": "Tea & Matcha",
+      "name": "Tea",
       "items": [
-        { "id": "item_matcha_latte", "name": "Matcha Latte", "basePrice": 5.00, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" },
-        { "id": "item_chai_latte", "name": "Chai Tea Latte", "basePrice": 4.50, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" },
-        { "id": "item_black_tea", "name": "Black Tea", "basePrice": 3.00, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" }
+        { "id": "item_black_tea", "name": "Black Tea", "prices": { "Small": 3.00, "Large": 3.75 }, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" },
+        { "id": "item_jasmine_tea", "name": "Jasmine Tea", "prices": { "Small": 3.00, "Large": 3.75 }, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" },
+        { "id": "item_lemon_green_tea", "name": "Lemon Green Tea", "prices": { "Small": 3.50, "Large": 4.25 }, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" },
+        { "id": "item_matcha_latte", "name": "Matcha Latte", "prices": { "Small": 4.50, "Large": 5.25 }, "allowsSize": true, "allowsTemp": true, "defaultTemp": "HOT" }
       ]
     },
     {
       "id": "cat_pastry",
-      "name": "Pastries",
+      "name": "Pastry",
       "items": [
-        { "id": "item_croissant", "name": "Butter Croissant", "basePrice": 3.50, "allowsSize": false, "allowsTemp": false },
-        { "id": "item_choc_croissant", "name": "Chocolate Croissant", "basePrice": 4.00, "allowsSize": false, "allowsTemp": false },
-        { "id": "item_blueberry_muffin", "name": "Blueberry Muffin", "basePrice": 3.50, "allowsSize": false, "allowsTemp": false }
+        { "id": "item_plain_croissant", "name": "Plain Croissant", "price": 3.50, "allowsSize": false, "allowsTemp": false },
+        { "id": "item_choc_croissant", "name": "Chocolate Croissant", "price": 4.00, "allowsSize": false, "allowsTemp": false },
+        { "id": "item_cookie", "name": "Chocolate Chip Cookie", "price": 2.50, "allowsSize": false, "allowsTemp": false },
+        { "id": "item_banana_bread", "name": "Banana Bread (Slice)", "price": 3.00, "allowsSize": false, "allowsTemp": false }
       ]
     }
   ],
+  "add_ons": [
+    { "id": "milk_whole", "name": "Whole Milk", "price": 0.00 },
+    { "id": "milk_skim", "name": "Skim Milk", "price": 0.00 },
+    { "id": "milk_oat", "name": "Oat Milk", "price": 0.50 },
+    { "id": "milk_almond", "name": "Almond Milk", "price": 0.75 },
+    { "id": "shot_espresso", "name": "Extra Espresso Shot", "price": 1.50 },
+    { "id": "shot_matcha", "name": "Extra Matcha Shot", "price": 1.50 },
+    { "id": "syrup_caramel", "name": "1 Pump Caramel Syrup", "price": 0.50 },
+    { "id": "syrup_hazelnut", "name": "1 Pump Hazelnut Syrup", "price": 0.50 }
+  ],
   "customizations": {
-    "sizes": [
-      { "id": "size_small", "name": "Small", "priceModifier": 0 },
-      { "id": "size_medium", "name": "Medium", "priceModifier": 0.50 },
-      { "id": "size_large", "name": "Large", "priceModifier": 1.00 }
-    ],
-    "milks": [
-      { "id": "milk_whole", "name": "Whole Milk", "priceModifier": 0 },
-      { "id": "milk_skim", "name": "Skim Milk", "priceModifier": 0 },
-      { "id": "milk_oat", "name": "Oat Milk", "priceModifier": 0.75 },
-      { "id": "milk_almond", "name": "Almond Milk", "priceModifier": 0.75 },
-      { "id": "milk_soy", "name": "Soy Milk", "priceModifier": 0.75 }
-    ],
-    "syrups": [
-      { "id": "syrup_vanilla", "name": "Vanilla", "priceModifier": 0.50 },
-      { "id": "syrup_caramel", "name": "Caramel", "priceModifier": 0.50 },
-      { "id": "syrup_hazelnut", "name": "Hazelnut", "priceModifier": 0.50 },
-      { "id": "syrup_sf_vanilla", "name": "Sugar-Free Vanilla", "priceModifier": 0.50 }
-    ],
-    "sweetnessLevels": ["0%", "25%", "50%", "75%", "100%"],
-    "iceLevels": ["No Ice", "Light Ice", "Regular Ice", "Extra Ice"],
-    "limits": {
-      "maxEspressoShots": 6,
-      "maxSyrupPumps": 8
-    }
+    "sweetness": ["No Sugar", "Less Sugar", "Extra Sugar"],
+    "ice": ["No Ice", "Less Ice", "Extra Ice"]
   }
 }

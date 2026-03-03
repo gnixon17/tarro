@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { supabase, Order, OrderItem } from './db.js';
+import { supabase, Order, OrderItem } from './db';
 
 export const apiRouter = Router();
 

@@ -16,8 +16,16 @@ export default function Owner() {
     fetch('/api/metrics')
       .then(async (res) => {
         if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-          throw new Error(err.error || 'Failed to fetch metrics');
+          const text = await res.text();
+          let errorMessage = `Error ${res.status}: ${res.statusText}`;
+          try {
+            const json = JSON.parse(text);
+            if (json.error) errorMessage = json.error;
+          } catch (e) {
+            // If not JSON, append the text body (truncated)
+            if (text) errorMessage += ` - ${text.substring(0, 100)}`;
+          }
+          throw new Error(errorMessage);
         }
         return res.json();
       })
