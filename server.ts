@@ -1,6 +1,5 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
-import { apiRouter } from './server/routes';
+import { apiRouter } from './server/routes.ts';
 
 async function startServer() {
   const app = express();
@@ -14,6 +13,7 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -28,4 +28,7 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
+});
