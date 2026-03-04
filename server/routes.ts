@@ -1,7 +1,7 @@
-import { Router } from 'express';
+import express from 'express';
 import { supabase, Order, OrderItem, isSupabaseConfigured } from './db.ts';
 
-export const apiRouter = Router();
+export const apiRouter = express.Router();
 
 // Configuration Status Check
 apiRouter.get('/config-status', (req, res) => {
