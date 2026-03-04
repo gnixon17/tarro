@@ -170,14 +170,19 @@ apiRouter.post('/identify-voice', async (req, res) => {
 
 // Orders CRUD
 apiRouter.get('/orders', async (req, res) => {
-  // Fetch orders with their items using Supabase foreign key relation
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*, items:order_items(*)')
-    .order('created_at', { ascending: false });
+  try {
+    // Fetch orders with their items using Supabase foreign key relation
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*, items:order_items(*)')
+      .order('created_at', { ascending: false });
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err: any) {
+    console.error('[GET /orders] Error:', err);
+    res.status(500).json({ error: err.message || 'Failed to fetch orders' });
+  }
 });
 
 apiRouter.post('/orders', async (req, res) => {
@@ -201,164 +206,184 @@ apiRouter.post('/orders', async (req, res) => {
 });
 
 apiRouter.get('/queue-status', async (req, res) => {
-  // Get all active items to calculate wait time
-  // We need to join orders to filter by status
-  const { data: activeItems, error } = await supabase
-    .from('order_items')
-    .select('quantity, orders!inner(status)')
-    .in('orders.status', ['NEW', 'IN_PROGRESS']);
+  try {
+    // Get all active items to calculate wait time
+    // We need to join orders to filter by status
+    const { data: activeItems, error } = await supabase
+      .from('order_items')
+      .select('quantity, orders!inner(status)')
+      .in('orders.status', ['NEW', 'IN_PROGRESS']);
 
-  if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: error.message });
 
-  const queueDepth = activeItems?.reduce((acc, item) => acc + item.quantity, 0) || 0;
-  const estimatedWaitTime = Math.max(2, queueDepth * 2); 
-  
-  res.json({
-    queueDepth,
-    estimatedWaitTime
-  });
+    const queueDepth = activeItems?.reduce((acc, item) => acc + item.quantity, 0) || 0;
+    const estimatedWaitTime = Math.max(2, queueDepth * 2); 
+    
+    res.json({
+      queueDepth,
+      estimatedWaitTime
+    });
+  } catch (err: any) {
+    console.error('[GET /queue-status] Error:', err);
+    res.status(500).json({ error: err.message || 'Failed to fetch queue status' });
+  }
 });
 
 apiRouter.patch('/orders/:id/status', async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
-  
-  // Basic UUID validation
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(id)) {
-    return res.status(400).json({ error: "Invalid UUID format" });
-  }
-  
-  const { error } = await supabase
-    .from('orders')
-    .update({ status })
-    .eq('id', id);
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    // Basic UUID validation
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      return res.status(400).json({ error: "Invalid UUID format" });
+    }
+    
+    const { error } = await supabase
+      .from('orders')
+      .update({ status })
+      .eq('id', id);
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ success: true });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error('[PATCH /orders/:id/status] Error:', err);
+    res.status(500).json({ error: err.message || 'Failed to update order status' });
+  }
 });
 
 // Dashboard Metrics
 apiRouter.get('/metrics', async (req, res) => {
-  // Fetch all completed orders and items to aggregate in memory
-  // This is safer than complex SQL without views
-  const { data: orders, error } = await supabase
-    .from('orders')
-    .select('*, items:order_items(*)')
-    .eq('status', 'COMPLETED');
+  try {
+    // Fetch all completed orders and items to aggregate in memory
+    // This is safer than complex SQL without views
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*, items:order_items(*)')
+      .eq('status', 'COMPLETED');
 
-  if (error) return res.status(500).json({ error: error.message });
+    if (error) return res.status(500).json({ error: error.message });
 
-  if (!orders || orders.length === 0) {
-    return res.json({
-      revenue: 0, orders: 0, aov: 0, dodGrowth: 0, topItems: [],
-      peakHour: 'N/A', oatMilkRate: 0, syrupRate: 0, avgItemsPerOrder: 0,
-      avgModsPerDrink: 0, anomalyFlag: null
+    if (!orders || orders.length === 0) {
+      return res.json({
+        revenue: 0, orders: 0, aov: 0, dodGrowth: 0, topItems: [],
+        peakHour: 'N/A', oatMilkRate: 0, syrupRate: 0, avgItemsPerOrder: 0,
+        avgModsPerDrink: 0, anomalyFlag: null
+      });
+    }
+
+    // 1. Revenue & Counts
+    const totalRevenue = orders.reduce((sum, o) => sum + (o.total_price || 0), 0);
+    const totalOrders = orders.length;
+    const aov = totalRevenue / totalOrders;
+
+    // 2. Top Items
+    const itemCounts: Record<string, number> = {};
+    let totalItems = 0;
+    let totalDrinks = 0;
+    let oatMilkCount = 0;
+    let syrupCount = 0;
+    let totalMods = 0;
+
+    orders.forEach(order => {
+      order.items.forEach((item: any) => {
+        // Top Items
+        itemCounts[item.product_name] = (itemCounts[item.product_name] || 0) + item.quantity;
+        totalItems += item.quantity;
+
+        // Modifiers Stats
+        if (item.size) { // It's a drink
+          totalDrinks += item.quantity;
+          if (item.milk === 'Oat Milk') oatMilkCount += item.quantity;
+          
+          // Check add_ons (JSON or string)
+          const hasAddOns = Array.isArray(item.add_ons) ? item.add_ons.length > 0 : false;
+          if (hasAddOns) syrupCount += item.quantity;
+
+          // Count mods
+          let mods = 0;
+          if (item.milk) mods++;
+          if (item.sweetness) mods++;
+          if (item.ice) mods++;
+          if (hasAddOns) mods++;
+          totalMods += (mods * item.quantity);
+        }
+      });
     });
+
+    const topItems = Object.entries(itemCounts)
+      .map(([product_name, count]) => ({ product_name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+
+    // 3. Peak Hour
+    const hourCounts: Record<string, number> = {};
+    orders.forEach(order => {
+      const hour = new Date(order.created_at).getHours();
+      hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+    });
+    
+    const peakHourInt = Object.entries(hourCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const peakHour = peakHourInt ? `${peakHourInt.padStart(2, '0')}:00` : 'N/A';
+
+    // 4. Rates
+    const oatMilkRate = totalDrinks ? oatMilkCount / totalDrinks : 0;
+    const syrupRate = totalDrinks ? syrupCount / totalDrinks : 0;
+    const avgItemsPerOrder = totalItems / totalOrders;
+    const avgModsPerDrink = totalDrinks ? totalMods / totalDrinks : 0;
+
+    res.json({
+      revenue: totalRevenue,
+      orders: totalOrders,
+      aov,
+      dodGrowth: 0.15, // Mocked for now
+      topItems,
+      peakHour,
+      oatMilkRate,
+      syrupRate,
+      avgItemsPerOrder,
+      avgModsPerDrink,
+      anomalyFlag: avgModsPerDrink > 2.5 ? 'High Customization Load' : null
+    });
+  } catch (err: any) {
+    console.error('[GET /metrics] Error:', err);
+    res.status(500).json({ error: err.message || 'Failed to fetch metrics' });
   }
-
-  // 1. Revenue & Counts
-  const totalRevenue = orders.reduce((sum, o) => sum + (o.total_price || 0), 0);
-  const totalOrders = orders.length;
-  const aov = totalRevenue / totalOrders;
-
-  // 2. Top Items
-  const itemCounts: Record<string, number> = {};
-  let totalItems = 0;
-  let totalDrinks = 0;
-  let oatMilkCount = 0;
-  let syrupCount = 0;
-  let totalMods = 0;
-
-  orders.forEach(order => {
-    order.items.forEach((item: any) => {
-      // Top Items
-      itemCounts[item.product_name] = (itemCounts[item.product_name] || 0) + item.quantity;
-      totalItems += item.quantity;
-
-      // Modifiers Stats
-      if (item.size) { // It's a drink
-        totalDrinks += item.quantity;
-        if (item.milk === 'Oat Milk') oatMilkCount += item.quantity;
-        
-        // Check add_ons (JSON or string)
-        const hasAddOns = Array.isArray(item.add_ons) ? item.add_ons.length > 0 : false;
-        if (hasAddOns) syrupCount += item.quantity;
-
-        // Count mods
-        let mods = 0;
-        if (item.milk) mods++;
-        if (item.sweetness) mods++;
-        if (item.ice) mods++;
-        if (hasAddOns) mods++;
-        totalMods += (mods * item.quantity);
-      }
-    });
-  });
-
-  const topItems = Object.entries(itemCounts)
-    .map(([product_name, count]) => ({ product_name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 3);
-
-  // 3. Peak Hour
-  const hourCounts: Record<string, number> = {};
-  orders.forEach(order => {
-    const hour = new Date(order.created_at).getHours();
-    hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-  });
-  
-  const peakHourInt = Object.entries(hourCounts).sort((a, b) => b[1] - a[1])[0]?.[0];
-  const peakHour = peakHourInt ? `${peakHourInt.padStart(2, '0')}:00` : 'N/A';
-
-  // 4. Rates
-  const oatMilkRate = totalDrinks ? oatMilkCount / totalDrinks : 0;
-  const syrupRate = totalDrinks ? syrupCount / totalDrinks : 0;
-  const avgItemsPerOrder = totalItems / totalOrders;
-  const avgModsPerDrink = totalDrinks ? totalMods / totalDrinks : 0;
-
-  res.json({
-    revenue: totalRevenue,
-    orders: totalOrders,
-    aov,
-    dodGrowth: 0.15, // Mocked for now
-    topItems,
-    peakHour,
-    oatMilkRate,
-    syrupRate,
-    avgItemsPerOrder,
-    avgModsPerDrink,
-    anomalyFlag: avgModsPerDrink > 2.5 ? 'High Customization Load' : null
-  });
 });
 
 // Export CSV
 apiRouter.get('/export', async (req, res) => {
-  const { data: orders, error } = await supabase
-    .from('orders')
-    .select('*, items:order_items(*)')
-    .order('created_at', { ascending: false });
+  try {
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*, items:order_items(*)')
+      .order('created_at', { ascending: false });
 
-  if (error) return res.status(500).send('Error fetching data');
+    if (error) return res.status(500).send('Error fetching data');
 
-  let csv = 'order_id,created_at,status,customer_name,total_price,items\n';
-  
-  if (orders) {
-    for (const order of orders) {
-      const itemsStr = order.items.map((i: any) => {
-        let desc = `${i.quantity}x ${i.size || ''} ${i.temperature || ''} ${i.product_name}`.trim();
-        const mods = [i.milk, i.sweetness, i.ice].filter(Boolean);
-        if (mods.length > 0) desc += ` (${mods.join(', ')})`;
-        return desc;
-      }).join('; ');
-      
-      csv += `${order.id},${order.created_at},${order.status},${order.customer_name},${order.total_price},"${itemsStr}"\n`;
+    let csv = 'order_id,created_at,status,customer_name,total_price,items\n';
+    
+    if (orders) {
+      for (const order of orders) {
+        const itemsStr = order.items.map((i: any) => {
+          let desc = `${i.quantity}x ${i.size || ''} ${i.temperature || ''} ${i.product_name}`.trim();
+          const mods = [i.milk, i.sweetness, i.ice].filter(Boolean);
+          if (mods.length > 0) desc += ` (${mods.join(', ')})`;
+          return desc;
+        }).join('; ');
+        
+        csv += `${order.id},${order.created_at},${order.status},${order.customer_name},${order.total_price},"${itemsStr}"\n`;
+      }
     }
+    
+    res.header('Content-Type', 'text/csv');
+    res.attachment('orders.csv');
+    res.send(csv);
+  } catch (err: any) {
+    console.error('[GET /export] Error:', err);
+    res.status(500).send('Failed to export data');
   }
-  
-  res.header('Content-Type', 'text/csv');
-  res.attachment('orders.csv');
-  res.send(csv);
 });
 
 // ElevenLabs TTS Wrapper (Mock/Proxy)
