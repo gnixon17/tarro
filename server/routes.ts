@@ -1,7 +1,15 @@
 import { Router } from 'express';
-import { supabase, Order, OrderItem } from './db';
+import { supabase, Order, OrderItem, isSupabaseConfigured } from './db';
 
 export const apiRouter = Router();
+
+// Configuration Status Check
+apiRouter.get('/config-status', (req, res) => {
+  res.json({
+    supabase: isSupabaseConfigured,
+    elevenLabs: !!process.env.ELEVENLABS_API_KEY
+  });
+});
 
 // Customer Management
 apiRouter.post('/customers', async (req, res) => {

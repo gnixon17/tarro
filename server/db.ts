@@ -8,6 +8,8 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 // Use a dummy URL if missing to prevent crash on startup
+export const isSupabaseConfigured = !!supabaseUrl && !!supabaseKey;
+
 export const supabase = createClient(
   supabaseUrl || 'https://dummy.supabase.co', 
   supabaseKey || 'dummy-key'
