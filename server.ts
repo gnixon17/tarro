@@ -1,5 +1,5 @@
 import express from 'express';
-import { apiRouter } from './server/routes.ts';
+import { apiRouter } from './server/routes';
 
 async function startServer() {
   const app = express();
