@@ -389,11 +389,9 @@ apiRouter.post('/tts', async (req, res) => {
     if (!response.ok) throw new Error('ElevenLabs API error');
     
     res.setHeader('Content-Type', 'audio/mpeg');
-    // @ts-ignore
-    response.body?.pipeTo(new WritableStream({
-      write(chunk) { res.write(chunk); },
-      close() { res.end(); }
-    }));
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    res.end(buffer);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

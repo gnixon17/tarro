@@ -7,7 +7,11 @@ if (!supabaseUrl || !supabaseKey) {
   console.warn("WARNING: SUPABASE_URL or SUPABASE_KEY is missing. Database operations will fail.");
 }
 
-export const supabase = createClient(supabaseUrl || '', supabaseKey || '');
+// Use a dummy URL if missing to prevent crash on startup
+export const supabase = createClient(
+  supabaseUrl || 'https://dummy.supabase.co', 
+  supabaseKey || 'dummy-key'
+);
 
 export interface Order {
   id: string;
