@@ -1,5 +1,5 @@
 import express from 'express';
-import { supabase, Order, OrderItem, isSupabaseConfigured } from './_db';
+import { supabase, Order, OrderItem, isSupabaseConfigured } from './_db.js';
 
 export const apiRouter = express.Router();
 
