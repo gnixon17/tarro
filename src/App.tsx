@@ -4,8 +4,6 @@ import Customer from './pages/Customer';
 import Barista from './pages/Barista';
 import Owner from './pages/Owner';
 import Settings from './pages/Settings';
-import Regulars from './pages/Regulars';
-import VoiceSettings from './pages/VoiceSettings';
 
 export default function App() {
   const [configStatus, setConfigStatus] = useState<{ supabase: boolean; elevenLabs: boolean } | null>(null);
@@ -45,9 +43,7 @@ export default function App() {
             <Link to="/" className="hover:text-amber-600 transition-colors">Customer Kiosk</Link>
             <Link to="/barista" className="hover:text-amber-600 transition-colors">Barista KDS</Link>
             <Link to="/owner" className="hover:text-amber-600 transition-colors">Owner Dashboard</Link>
-            <Link to="/regulars" className="hover:text-amber-600 transition-colors">Regulars</Link>
-            <Link to="/settings" className="hover:text-amber-600 transition-colors">Test Runner</Link>
-            <Link to="/voice-settings" className="hover:text-amber-600 transition-colors">Voice Tuning</Link>
+            <Link to="/settings" className="hover:text-amber-600 transition-colors">Settings</Link>
           </div>
         </nav>
         <main className="p-4 md:p-8 max-w-7xl mx-auto">
@@ -55,9 +51,7 @@ export default function App() {
             <Route path="/" element={<Customer />} />
             <Route path="/barista" element={<Barista />} />
             <Route path="/owner" element={<Owner />} />
-            <Route path="/regulars" element={<Regulars />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/voice-settings" element={<VoiceSettings />} />
           </Routes>
         </main>
       </div>
