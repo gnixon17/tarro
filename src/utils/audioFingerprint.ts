@@ -1,3 +1,15 @@
+export interface FingerprintConfig {
+  fftSize: number;
+  smoothingTimeConstant: number;
+  minVolume: number;
+}
+
+const defaultConfig: FingerprintConfig = {
+  fftSize: 256,
+  smoothingTimeConstant: 0.85,
+  minVolume: 10
+};
+
 export class AudioFingerprinter {
   private audioContext: AudioContext;
   private analyser: AnalyserNode;
@@ -5,12 +17,23 @@ export class AudioFingerprinter {
   private dataArray: Uint8Array;
   private isRecording = false;
   private accumulatedSpectra: number[][] = [];
+  private config: FingerprintConfig;
 
   constructor() {
+    this.config = { ...defaultConfig };
+    try {
+      const saved = localStorage.getItem('voice_config');
+      if (saved) {
+        this.config = { ...this.config, ...JSON.parse(saved) };
+      }
+    } catch (e) {
+      console.error("Failed to load voice config", e);
+    }
+
     this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     this.analyser = this.audioContext.createAnalyser();
-    this.analyser.fftSize = 256; // 128 frequency bins
-    this.analyser.smoothingTimeConstant = 0.85;
+    this.analyser.fftSize = this.config.fftSize;
+    this.analyser.smoothingTimeConstant = this.config.smoothingTimeConstant;
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
   }
 
@@ -48,7 +71,7 @@ export class AudioFingerprinter {
     
     // Only accumulate if there is significant audio (simple VAD)
     const volume = this.dataArray.reduce((a, b) => a + b, 0) / this.dataArray.length;
-    if (volume > 10) { // Threshold for silence
+    if (volume > this.config.minVolume) { // Threshold for silence
       this.accumulatedSpectra.push(Array.from(this.dataArray));
     }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Fingerprint, Coffee } from 'lucide-react';
+import { Users, Fingerprint, Coffee, Trash2 } from 'lucide-react';
 
 export default function Regulars() {
   const [regulars, setRegulars] = useState<any[]>([]);
@@ -9,6 +9,19 @@ export default function Regulars() {
       .then(res => res.json())
       .then(setRegulars);
   }, []);
+
+  const handleDelete = async (id: string, name: string) => {
+    try {
+      const res = await fetch(`/api/customers/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setRegulars(regulars.filter(c => c.id !== id));
+      } else {
+        console.error("Failed to delete profile.");
+      }
+    } catch (e) {
+      console.error("Error deleting profile:", e);
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto pb-12">
@@ -33,8 +46,16 @@ export default function Regulars() {
           if (!Array.isArray(order) || !Array.isArray(fingerprint)) return null;
 
           return (
-            <div key={customer.id} className="bg-white border border-stone-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-between mb-4">
+            <div key={customer.id} className="bg-white border border-stone-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow relative group">
+              <button 
+                onClick={() => handleDelete(customer.id, customer.name)}
+                className="absolute top-4 right-4 p-2 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                title="Delete Profile"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+              
+              <div className="flex items-center justify-between mb-4 pr-8">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center text-amber-800 font-bold">
                     {customer.name.charAt(0)}
@@ -47,9 +68,6 @@ export default function Regulars() {
                     </div>
                   </div>
                 </div>
-                <span className="text-xs text-stone-400 font-mono">
-                  {new Date(customer.created_at).toLocaleDateString()}
-                </span>
               </div>
 
               <div className="bg-stone-50 rounded-lg p-3 border border-stone-100">
@@ -73,6 +91,10 @@ export default function Regulars() {
                 <div className="text-xs text-stone-400 font-mono flex justify-between">
                   <span>FFT Vector Size</span>
                   <span>{fingerprint.length} bins</span>
+                </div>
+                <div className="text-xs text-stone-400 font-mono flex justify-between mt-1">
+                  <span>Enrolled</span>
+                  <span>{new Date(customer.created_at).toLocaleDateString()}</span>
                 </div>
               </div>
             </div>

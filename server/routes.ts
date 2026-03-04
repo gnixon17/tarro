@@ -39,26 +39,60 @@ apiRouter.get('/customers', async (req, res) => {
   res.json(data);
 });
 
+apiRouter.delete('/customers', async (req, res) => {
+  // Delete all customers
+  const { error } = await supabase
+    .from('customers')
+    .delete()
+    .neq('id', '00000000-0000-0000-0000-000000000000'); // Hack to delete all rows
+    
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+apiRouter.delete('/customers/:id', async (req, res) => {
+  const { id } = req.params;
+  
+  // Basic UUID validation
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) {
+    return res.status(400).json({ error: "Invalid UUID format" });
+  }
+
+  console.log(`[DELETE /customers/${id}] Attempting to delete customer...`);
+  
+  const { error } = await supabase
+    .from('customers')
+    .delete()
+    .eq('id', id);
+    
+  if (error) {
+    console.error(`[DELETE /customers/${id}] Error:`, error);
+    return res.status(500).json({ error: error.message });
+  }
+  
+  console.log(`[DELETE /customers/${id}] Successfully deleted customer.`);
+  res.json({ success: true });
+});
+
 apiRouter.post('/identify-voice', async (req, res) => {
-  const { fingerprint } = req.body; // Array of numbers (FFT data)
+  const { fingerprint, threshold, returnAllScores } = req.body; // Array of numbers (FFT data)
   
   if (!fingerprint || !Array.isArray(fingerprint)) {
     return res.status(400).json({ error: "Invalid fingerprint data" });
   }
 
-  // Fetch all customers to compare in memory (simple Euclidean distance)
-  // For production, use pgvector in Supabase
+  // Fetch all customers to compare in memory
   const { data: customers, error } = await supabase.from('customers').select('*');
   
   if (error) return res.status(500).json({ error: error.message });
 
   let bestMatch = null;
-  let minDistance = Infinity;
+  let bestMatchScore = -1;
+  const allScores: any[] = [];
 
   console.log(`[POST /identify-voice] Comparing against ${customers?.length || 0} customers...`);
 
-  const MATCH_THRESHOLD = 2500;
-  
   if (customers) {
     for (const customer of customers) {
       // Supabase returns JSON columns as objects/arrays automatically
@@ -80,35 +114,57 @@ apiRouter.post('/identify-voice', async (req, res) => {
       }
 
       const len = Math.min(fingerprint.length, storedPrint.length);
-      let sumSqDiff = 0;
+      
+      // Cosine Similarity
+      let dotProduct = 0;
+      let normA = 0;
+      let normB = 0;
       
       for (let i = 0; i < len; i++) {
-        sumSqDiff += Math.pow(fingerprint[i] - storedPrint[i], 2);
+        dotProduct += fingerprint[i] * storedPrint[i];
+        normA += fingerprint[i] * fingerprint[i];
+        normB += storedPrint[i] * storedPrint[i];
       }
       
-      const distance = Math.sqrt(sumSqDiff);
-      console.log(` - Distance to ${customer.name}: ${distance.toFixed(2)} (Threshold: ${MATCH_THRESHOLD})`);
+      const similarity = (normA === 0 || normB === 0) ? 0 : dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
       
-      if (distance < minDistance) {
-        minDistance = distance;
+      console.log(` - Similarity to ${customer.name}: ${similarity.toFixed(4)}`);
+      
+      allScores.push({ name: customer.name, score: similarity });
+
+      // We want the HIGHEST similarity
+      if (similarity > bestMatchScore) {
+        bestMatchScore = similarity;
         bestMatch = customer;
       }
     }
   }
 
-  if (bestMatch && minDistance < MATCH_THRESHOLD) {
-    console.log(`[POST /identify-voice] MATCH FOUND: ${bestMatch.name} (Dist: ${minDistance.toFixed(2)})`);
+  // Threshold for Cosine Similarity (0 to 1). 
+  const SIMILARITY_THRESHOLD = threshold !== undefined ? threshold : 0.96;
+
+  if (returnAllScores) {
+    return res.json({
+      match: bestMatchScore >= SIMILARITY_THRESHOLD,
+      bestScore: bestMatchScore,
+      bestMatchName: bestMatch?.name,
+      allScores: allScores.sort((a, b) => b.score - a.score)
+    });
+  }
+
+  if (bestMatch && bestMatchScore >= SIMILARITY_THRESHOLD) {
+    console.log(`[POST /identify-voice] MATCH FOUND: ${bestMatch.name} (Score: ${bestMatchScore.toFixed(4)})`);
     res.json({ 
       match: true, 
       customer: { 
         name: bestMatch.name, 
         regular_order: bestMatch.regular_order 
       },
-      confidence: 1 - (minDistance / MATCH_THRESHOLD)
+      confidence: bestMatchScore
     });
   } else {
-    console.log(`[POST /identify-voice] No match found. Best was ${bestMatch?.name} at ${minDistance.toFixed(2)}`);
-    res.json({ match: false });
+    console.log(`[POST /identify-voice] No match found. Best was ${bestMatch?.name} at ${bestMatchScore.toFixed(4)}`);
+    res.json({ match: false, bestScore: bestMatchScore, bestMatchName: bestMatch?.name });
   }
 });
 
@@ -166,6 +222,12 @@ apiRouter.get('/queue-status', async (req, res) => {
 apiRouter.patch('/orders/:id/status', async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
+  
+  // Basic UUID validation
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) {
+    return res.status(400).json({ error: "Invalid UUID format" });
+  }
   
   const { error } = await supabase
     .from('orders')

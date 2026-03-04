@@ -200,10 +200,21 @@ export default function Customer() {
   const identifyUser = async (fingerprint: number[]) => {
     try {
       setIdentificationStatus("Identifying...");
+      
+      // Load threshold from config if available
+      let threshold = 0.96;
+      try {
+        const saved = localStorage.getItem('voice_config');
+        if (saved) {
+          const config = JSON.parse(saved);
+          if (config.similarityThreshold) threshold = config.similarityThreshold;
+        }
+      } catch (e) {}
+
       const res = await fetch('/api/identify-voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fingerprint })
+        body: JSON.stringify({ fingerprint, threshold })
       });
       const data = await res.json();
       if (data.match) {
