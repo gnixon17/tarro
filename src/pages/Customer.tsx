@@ -223,7 +223,8 @@ export default function Customer() {
         setTimeout(() => setIdentificationStatus(''), 3000);
         return data.customer;
       } else {
-        setIdentificationStatus('');
+        setIdentificationStatus('Voice not recognized');
+        setTimeout(() => setIdentificationStatus(''), 3000);
         return null;
       }
     } catch (e) {
