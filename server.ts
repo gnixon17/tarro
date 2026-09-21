@@ -1,9 +1,10 @@
+import 'dotenv/config';
 import express from 'express';
 import { apiRouter } from './api/_routes';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Parse JSON bodies
   app.use(express.json());

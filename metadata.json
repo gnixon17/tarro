@@ -1,5 +1,5 @@
 {
-  "name": "AI Voice Cashier",
-  "description": "An AI voice cashier for a coffee shop with customer, barista, and owner views.",
-  "requestFramePermissions": ["microphone"]
+  "name": "Tarro",
+  "description": "Multi-account portfolio and options hedge tracker with a scenario simulator.",
+  "requestFramePermissions": []
 }
