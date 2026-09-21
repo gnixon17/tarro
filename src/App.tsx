@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { StoreProvider } from './state/StoreContext';
 import Dashboard from './pages/Dashboard';
@@ -10,10 +10,16 @@ import Accounts from './pages/Accounts';
 import Instruments from './pages/Instruments';
 import SettingsPage from './pages/SettingsPage';
 
+/**
+ * Hash routing rather than history routing: the same bundle is served from the
+ * dev server, from a static `dist/`, and from a published artifact, and only
+ * the first of those can rewrite deep links back to index.html. A personal
+ * tool has nothing to lose from the `#` in the URL.
+ */
 export default function App() {
   return (
     <StoreProvider>
-      <BrowserRouter>
+      <HashRouter>
         <Layout>
           <Routes>
             <Route path="/" element={<Dashboard />} />
@@ -28,7 +34,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Layout>
-      </BrowserRouter>
+      </HashRouter>
     </StoreProvider>
   );
 }

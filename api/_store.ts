@@ -14,7 +14,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { demoStore, emptyStore } from '../src/lib/seed';
-import { DEFAULT_SETTINGS, DEFAULT_VOL_MODEL, type PortfolioStore } from '../src/lib/types';
+import { normalizeStore as normalize } from '../src/lib/storeOps';
+import type { PortfolioStore } from '../src/lib/types';
 
 const DATA_DIR = process.env.TARRO_DATA_DIR ?? path.resolve(process.cwd(), 'data');
 const DATA_FILE = path.join(DATA_DIR, 'portfolio.json');
@@ -24,24 +25,6 @@ export type DriverName = 'file' | 'supabase';
 
 export function driverName(): DriverName {
   return process.env.SUPABASE_URL && process.env.SUPABASE_KEY ? 'supabase' : 'file';
-}
-
-/** Fill in anything a hand-edited or older document is missing. */
-function normalize(raw: Partial<PortfolioStore> | null | undefined): PortfolioStore {
-  const base = emptyStore();
-  if (!raw) return base;
-  return {
-    accounts: raw.accounts ?? [],
-    instruments: raw.instruments ?? [],
-    positions: raw.positions ?? [],
-    groups: raw.groups ?? [],
-    scenarios: raw.scenarios ?? base.scenarios,
-    settings: {
-      ...DEFAULT_SETTINGS,
-      ...(raw.settings ?? {}),
-      volModel: { ...DEFAULT_VOL_MODEL, ...(raw.settings?.volModel ?? {}) },
-    },
-  };
 }
 
 // --- file driver -----------------------------------------------------------

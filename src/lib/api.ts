@@ -1,40 +1,70 @@
-/** Thin client for the persistence API. All maths happens locally. */
-import type { Account, Instrument, PortfolioStore, Position, Scenario, StrategyGroup } from './types';
+/**
+ * The app's data layer.
+ *
+ * Every mutation is read-modify-write against whichever backend this page
+ * found (`storage.ts`), applying the shared rules in `storeOps.ts`. Calls are
+ * serialised through one promise chain so two quick edits cannot both read the
+ * same document and clobber each other.
+ */
+import { demoStore, emptyStore } from './seed';
+import { getBackend, type BackendName } from './storage';
+import {
+  bulkPositions,
+  createGroupWithLegs,
+  createItem,
+  deleteItem,
+  restoreBuiltinScenarios,
+  updateItem,
+  updateSettings,
+  type CollectionName,
+} from './storeOps';
+import type { Account, Instrument, PortfolioStore, Position, Scenario, Settings, StrategyGroup } from './types';
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
+let queue: Promise<unknown> = Promise.resolve();
+
+/** Read, mutate, write - one at a time. */
+function mutate<T>(fn: (store: PortfolioStore) => T): Promise<T> {
+  const run = queue.then(async () => {
+    const backend = await getBackend();
+    const store = await backend.load();
+    const result = fn(store);
+    await backend.save(store);
+    return result;
   });
-  if (!res.ok) {
-    let message = `${res.status} ${res.statusText}`;
-    try {
-      const body = await res.json();
-      if (body?.error) message = body.error;
-    } catch {
-      /* response had no JSON body */
-    }
-    throw new Error(message);
-  }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  queue = run.catch(() => undefined);
+  return run;
 }
 
-const collection = <T>(name: string) => ({
-  list: () => request<T[]>(`/${name}`),
-  create: (item: Partial<T>) => request<T>(`/${name}`, { method: 'POST', body: JSON.stringify(item) }),
-  update: (key: string, item: Partial<T>) =>
-    request<T>(`/${name}/${encodeURIComponent(key)}`, { method: 'PUT', body: JSON.stringify(item) }),
-  remove: (key: string) => request<void>(`/${name}/${encodeURIComponent(key)}`, { method: 'DELETE' }),
-});
+function collection<T>(name: CollectionName) {
+  return {
+    create: (item: Partial<T>) => mutate((store) => createItem(store, name, item) as T),
+    update: (key: string, item: Partial<T>) => mutate((store) => updateItem(store, name, key, item) as T),
+    remove: (key: string) => mutate((store) => deleteItem(store, name, key)),
+  };
+}
 
 export const api = {
-  health: () => request<{ ok: boolean; driver: string }>('/health'),
-  getStore: () => request<PortfolioStore>('/store'),
-  putStore: (store: PortfolioStore) => request<PortfolioStore>('/store', { method: 'PUT', body: JSON.stringify(store) }),
-  reset: (mode: 'demo' | 'empty') => request<PortfolioStore>(`/store/reset?mode=${mode}`, { method: 'POST' }),
-  updateSettings: (settings: Partial<PortfolioStore['settings']>) =>
-    request<PortfolioStore['settings']>('/settings', { method: 'PUT', body: JSON.stringify(settings) }),
+  async backend(): Promise<{ name: BackendName; description: string; durable: boolean }> {
+    const { name, description, durable } = await getBackend();
+    return { name, description, durable };
+  },
+
+  async getStore(): Promise<PortfolioStore> {
+    return (await getBackend()).load();
+  },
+
+  async putStore(store: PortfolioStore): Promise<PortfolioStore> {
+    await (await getBackend()).save(store);
+    return store;
+  },
+
+  async reset(mode: 'demo' | 'empty'): Promise<PortfolioStore> {
+    const next = mode === 'demo' ? demoStore() : emptyStore();
+    await (await getBackend()).save(next);
+    return next;
+  },
+
+  updateSettings: (settings: Partial<Settings>) => mutate((store) => updateSettings(store, settings)),
 
   accounts: collection<Account>('accounts'),
   instruments: collection<Instrument>('instruments'),
@@ -43,11 +73,9 @@ export const api = {
   scenarios: collection<Scenario>('scenarios'),
 
   createGroupWithLegs: (group: Partial<StrategyGroup>, positions: Partial<Position>[]) =>
-    request<{ group: StrategyGroup; positions: Position[] }>('/groups/with-legs', {
-      method: 'POST',
-      body: JSON.stringify({ group, positions }),
-    }),
-  bulkPositions: (positions: Partial<Position>[]) =>
-    request<Position[]>('/positions/bulk', { method: 'POST', body: JSON.stringify(positions) }),
-  restoreBuiltinScenarios: () => request<Scenario[]>('/scenarios/restore-builtins', { method: 'POST' }),
+    mutate((store) => createGroupWithLegs(store, group, positions)),
+
+  bulkPositions: (positions: Partial<Position>[]) => mutate((store) => bulkPositions(store, positions)),
+
+  restoreBuiltinScenarios: () => mutate((store) => restoreBuiltinScenarios(store)),
 };

@@ -5,8 +5,18 @@ import { parsePositionsCsv, POSITION_CSV_TEMPLATE } from '../lib/csv';
 import { useStore } from '../state/StoreContext';
 import { DEFAULT_VOL_MODEL } from '../lib/types';
 
+const BACKEND_LABELS: Record<string, string> = {
+  artifact: 'Storage: this artifact',
+  server: 'Storage: the local server',
+  browser: 'Storage: this browser',
+};
+
+function backendLabel(name: string): string {
+  return BACKEND_LABELS[name] ?? `Storage: ${name}`;
+}
+
 export default function SettingsPage() {
-  const { store, driver, run, refresh } = useStore();
+  const { store, backend, run, refresh } = useStore();
   const fileRef = useRef<HTMLInputElement>(null);
   const [csvText, setCsvText] = useState('');
   const [csvReport, setCsvReport] = useState<string | null>(null);
@@ -200,7 +210,7 @@ export default function SettingsPage() {
         )}
       </Card>
 
-      <Card title="Data" subtitle={`Storage driver: ${driver || 'unknown'}`}>
+      <Card title="Data" subtitle={backend ? backendLabel(backend.name) : 'Checking storage…'}>
         <div className="flex flex-wrap gap-2">
           <button type="button" className="btn" onClick={exportJson}>Export JSON</button>
           <button type="button" className="btn" onClick={() => fileRef.current?.click()}>Import JSON</button>
@@ -237,11 +247,14 @@ export default function SettingsPage() {
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => refresh()}>Reload</button>
         </div>
-        <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
-          {driver === 'supabase'
-            ? 'Writing to the app_state table in Supabase.'
-            : 'Writing to ./data/portfolio.json on the server. Set SUPABASE_URL and SUPABASE_KEY to persist to Postgres instead.'}
-        </p>
+        {backend && (
+          <p
+            className="text-xs mt-3"
+            style={{ color: backend.durable ? 'var(--text-muted)' : 'var(--warning)' }}
+          >
+            {backend.description}
+          </p>
+        )}
       </Card>
     </div>
   );

@@ -118,11 +118,13 @@ is not a failure: rolled-into-each-other books genuinely have no textbook name.
 ## Architecture
 
 ```
-src/lib/          pure, isomorphic, fully tested — no React, no I/O
+src/lib/          pure, isomorphic, fully tested — no React
   math/           Black-Scholes, greeks, implied vol, Gaussian helpers
   options/        vol surface + shock model, strategy templates, classifier
   portfolio/      valuation, rollups, payoff ladders, hedge summaries
   sim/            scenario engine and built-in presets
+  storeOps.ts     portfolio mutations, shared by the API and the browser
+  storage.ts      backend selection: artifact / server / browser
 src/pages/        dashboard, positions, ticker detail, simulator, library, admin
 src/components/   UI primitives and hand-rolled SVG charts
 api/              thin REST layer — stores and returns the portfolio document
@@ -133,15 +135,29 @@ instead of round-tripping. The server only persists. Both use the same code in
 `src/lib`, so the number on the dashboard and the number in a stress run can
 never disagree.
 
+Routing is hash-based, so the one build works from the dev server, from a static
+`dist/`, and from a published page — only the first of those can rewrite deep
+links back to `index.html`.
+
 ## Storage
 
-One JSON document, written atomically.
+The portfolio is one JSON document. The same bundle runs in three places, so the
+backend is chosen by probing at startup rather than by a build flag
+(`src/lib/storage.ts`), and Settings always names the one in use:
 
-- **Default:** `./data/portfolio.json`. Zero config.
-- **Postgres/Supabase:** set `SUPABASE_URL` and `SUPABASE_KEY` and it writes to
-  the `app_state` table instead (`supabase_schema.sql`). Use this anywhere with
-  an ephemeral filesystem — Vercel included, where the file driver will silently
-  lose writes.
+| Backend | Where it writes | When it is picked |
+|---|---|---|
+| `artifact` | the artifact's own document store | a published Artifact page, where the `db` capability is granted |
+| `server` | `./data/portfolio.json`, or Postgres when `SUPABASE_URL` and `SUPABASE_KEY` are set (`supabase_schema.sql`) | `npm run dev`, or any host serving the API |
+| `browser` | `localStorage` | a static build with no API behind it |
+
+Every mutation goes through the same pure functions in `src/lib/storeOps.ts`
+whichever backend is active, so a cascading delete and a protected built-in
+scenario behave identically in all three. Only the last one is per-device and
+non-durable, and Settings says so in as many words.
+
+Deploying on a host with an ephemeral filesystem — Vercel included — means using
+the Postgres backend; the file driver will otherwise lose writes silently.
 
 Export and import the whole document as JSON from Settings, and import positions
 from CSV.

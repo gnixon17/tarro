@@ -7,7 +7,7 @@ interface StoreContextValue {
   store: PortfolioStore | null;
   loading: boolean;
   error: string | null;
-  driver: string;
+  backend: { name: string; description: string; durable: boolean } | null;
   /** Today's marks, greeks and rollups. Recomputed whenever the store changes. */
   valuation: PortfolioValuation | null;
   /** t0 IV anchors, so a user's own marks survive every re-valuation. */
@@ -24,13 +24,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [store, setStore] = useState<PortfolioStore | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [driver, setDriver] = useState('');
+  const [backend, setBackend] = useState<StoreContextValue['backend']>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [next, health] = await Promise.all([api.getStore(), api.health().catch(() => ({ driver: '' }))]);
+      const [next, info] = await Promise.all([api.getStore(), api.backend()]);
       setStore(next);
-      setDriver((health as { driver: string }).driver ?? '');
+      setBackend(info);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -78,8 +78,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const clearError = useCallback(() => setError(null), []);
 
   const value = useMemo(
-    () => ({ store, loading, error, driver, valuation, anchors, refresh, run, clearError }),
-    [store, loading, error, driver, valuation, anchors, refresh, run, clearError],
+    () => ({ store, loading, error, backend, valuation, anchors, refresh, run, clearError }),
+    [store, loading, error, backend, valuation, anchors, refresh, run, clearError],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

@@ -6,6 +6,9 @@ import {defineConfig, loadEnv} from 'vite';
 export default defineConfig(({mode}) => {
   loadEnv(mode, '.', '');
   return {
+    // Relative asset URLs, so the build works from a subpath or a static host
+    // rather than only from the domain root.
+    base: './',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
