@@ -10,7 +10,8 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
-    "start": "node server.ts"
+    "start": "node server.ts",
+    "mock-schwab": "tsx scripts/mock-schwab.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

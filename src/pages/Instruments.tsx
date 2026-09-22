@@ -34,6 +34,8 @@ export default function Instruments() {
 
   if (!store) return null;
 
+  const needsReview = store.instruments.filter((i) => i.needsReview).map((i) => i.symbol);
+
   function edit(instrument?: Instrument) {
     setDraft(instrument ? { ...instrument } : { ...BLANK });
     setIsNew(!instrument);
@@ -52,6 +54,8 @@ export default function Instruments() {
       skewSlope: Number(draft.skewSlope),
       skewCurvature: Number(draft.skewCurvature),
       termSlope: Number(draft.termSlope),
+      // Editing by hand is what "reviewed" means.
+      needsReview: false,
     };
     const ok = isNew
       ? await run(() => api.instruments.create(payload))
@@ -84,6 +88,20 @@ export default function Instruments() {
         <button type="button" className="btn btn-primary" onClick={() => edit()}>Add ticker</button>
       </div>
 
+      {needsReview.length > 0 && (
+        <Card>
+          <div className="text-sm">
+            <strong>{needsReview.length} ticker{needsReview.length === 1 ? '' : 's'} added by a sync still carry placeholder assumptions.</strong>
+            <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>
+              A broker reports what you hold and what it is worth, but not its beta — and beta is what propagates a market
+              shock to this name. Until you set it, {needsReview.join(', ')} {needsReview.length === 1 ? 'moves' : 'move'}{' '}
+              one-for-one with {store.settings.marketSymbol} in every scenario, which understates the risk on anything
+              high-beta.
+            </p>
+          </div>
+        </Card>
+      )}
+
       <Card bodyClassName="p-0">
         {store.instruments.length === 0 ? (
           <EmptyState
@@ -112,8 +130,13 @@ export default function Instruments() {
               <tbody>
                 {store.instruments.map((instrument) => (
                   <tr key={instrument.symbol}>
-                    <td className="font-semibold">
+                    <td className="font-semibold whitespace-nowrap">
                       <Link to={`/ticker/${instrument.symbol}`} style={{ color: 'var(--accent)' }}>{instrument.symbol}</Link>
+                      {instrument.needsReview && (
+                        <span className="pill ml-1.5" style={{ color: 'var(--warning)', borderColor: 'var(--warning)' }}>
+                          check beta
+                        </span>
+                      )}
                     </td>
                     <td className="text-xs">{instrument.name}</td>
                     <td className="num">
@@ -130,7 +153,9 @@ export default function Instruments() {
                       />
                     </td>
                     <td className="num">{(instrument.dividendYield * 100).toFixed(2)}%</td>
-                    <td className="num">{number(instrument.beta)}</td>
+                    <td className="num" style={instrument.needsReview ? { color: 'var(--warning)' } : undefined}>
+                      {number(instrument.beta)}
+                    </td>
                     <td className="num">{volPoints(instrument.ivAtm30)}</td>
                     <td className="num">{number(instrument.volBeta)}</td>
                     <td className="num">{number(instrument.skewSlope, 3)}</td>

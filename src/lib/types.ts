@@ -31,11 +31,24 @@ export const ACCOUNT_KINDS: { id: AccountKind; label: string; tax: TaxTreatment 
   { id: 'OTHER', label: 'Other', tax: 'TAXABLE' },
 ];
 
+/** Where a record came from. Synced records are reconciled; manual ones are never touched. */
+export type RecordSource = 'MANUAL' | 'SCHWAB';
+
 export interface Account {
   id: string;
   name: string;
   broker: string;
   kind: AccountKind;
+  /**
+   * The broker's own identifier for this account — Schwab's encrypted account
+   * hash. Present only on linked accounts; its presence is what makes an
+   * account eligible for sync.
+   */
+  externalId?: string;
+  /** Masked account number for display, e.g. "…4821". Never the full number. */
+  externalLabel?: string;
+  /** ISO timestamp of the last successful sync. */
+  lastSyncedAt?: string;
   /** Uninvested cash. Counts toward portfolio value but carries no market risk. */
   cash: number;
   /** Options approval level, informational only. */
@@ -75,10 +88,28 @@ export interface Instrument {
   skewCurvature: number;
   /** Term structure slope: IV(T) = IV30 + termSlope * ln(T_days / 30). */
   termSlope: number;
-  /** Annualised idiosyncratic (residual) vol, used for dispersion in scenarios. */
-  idioVol?: number;
   sector?: string;
   updatedAt?: string;
+  /** Where price/IV last came from, so the UI can show what is live and what is typed. */
+  source?: RecordSource;
+  /**
+   * Set when a ticker was created automatically with placeholder assumptions.
+   *
+   * A broker reports positions and prices but not beta, and a silent beta of
+   * 1.0 on a high-beta name understates every stress test without anything
+   * looking wrong. This makes that visible until a human has looked at it.
+   * Cleared the first time the ticker is edited by hand.
+   */
+  needsReview?: boolean;
+  /** Goodness of fit from the last surface calibration, for judging the parameters. */
+  surfaceFit?: {
+    /** Root-mean-square error in vol points between the fit and the chain. */
+    rmseVolPoints: number;
+    /** Contracts used. */
+    samples: number;
+    expiries: number;
+    fittedAt: string;
+  };
 }
 
 export type PositionKind = 'EQUITY' | 'OPTION';
@@ -91,6 +122,10 @@ interface PositionBase {
   groupId?: string | null;
   openedAt?: string;
   notes?: string;
+  /** Defaults to MANUAL when absent. Only SCHWAB rows are reconciled by a sync. */
+  source?: RecordSource;
+  /** The broker's symbol for this position, used to match it on the next sync. */
+  externalSymbol?: string;
 }
 
 export interface EquityPosition extends PositionBase {

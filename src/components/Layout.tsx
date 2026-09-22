@@ -10,6 +10,7 @@ const NAV = [
   { to: '/scenarios', label: 'Scenarios' },
   { to: '/accounts', label: 'Accounts' },
   { to: '/instruments', label: 'Market data' },
+  { to: '/connections', label: 'Connections' },
   { to: '/settings', label: 'Settings' },
 ];
 

@@ -26,7 +26,7 @@ data so the simulator has something to chew on; **replace it from Settings →
 Clear everything** before entering anything real.
 
 ```bash
-npm test             # 46 unit tests: pricing, vol model, classifier, engine
+npm test             # 103 tests, incl. a full sync against a mock broker
 npm run lint         # tsc --noEmit
 npm run build        # production bundle into dist/
 ```
@@ -123,8 +123,10 @@ src/lib/          pure, isomorphic, fully tested — no React
   options/        vol surface + shock model, strategy templates, classifier
   portfolio/      valuation, rollups, payoff ladders, hedge summaries
   sim/            scenario engine and built-in presets
+  brokers/        OSI symbols, Schwab mapping, surface fitting, reconciliation
   storeOps.ts     portfolio mutations, shared by the API and the browser
   storage.ts      backend selection: artifact / server / browser
+api/schwab/       OAuth, encrypted token store, rate-limited client, sync
 src/pages/        dashboard, positions, ticker detail, simulator, library, admin
 src/components/   UI primitives and hand-rolled SVG charts
 api/              thin REST layer — stores and returns the portfolio document
@@ -162,16 +164,70 @@ the Postgres backend; the file driver will otherwise lose writes silently.
 Export and import the whole document as JSON from Settings, and import positions
 from CSV.
 
-## Market data
+## Schwab sync
 
-There is no live feed. Prices, implied vols, betas and skew parameters are
-entered by hand under **Market data**, and everything in the app prices off
-them — so update the marks before drawing a conclusion from a stress test.
+Positions, prices and implied vols can come from Schwab instead of being typed.
 
-To wire in a real feed, replace the `price` / `ivAtm30` fields on `Instrument`
-from a provider and leave the rest alone: nothing else in the codebase reads
-market data, so a quote provider is a single sync job writing to
-`PUT /api/instruments/:symbol`.
+**Setup.** Register an app at developer.schwab.com, request both the *Accounts
+and Trading* and *Market Data* products, then set `SCHWAB_APP_KEY`,
+`SCHWAB_APP_SECRET` and `SCHWAB_REDIRECT_URI` (see `.env.example`) and restart.
+Connections → Connect walks the rest.
+
+Schwab requires an HTTPS callback, which a local HTTP server cannot serve, so
+the flow is: authorise in the browser, then paste back the address you were
+redirected to — it fails to load, but it carries the code. If you front the app
+with HTTPS, `GET /api/schwab/callback` completes it directly instead.
+
+**Refresh tokens last seven days and cannot be extended.** That is Schwab's
+design, not a limitation here; the app shows the deadline and says so plainly
+rather than pretending the connection is permanent.
+
+**What a sync does.**
+
+| | |
+|---|---|
+| Positions | Shares and option legs across every linked account. Option strike and expiry are decoded from the OSI symbol; a short is reconstructed from Schwab's split long/short quantities. |
+| Prices | One quote call covers every ticker, falling through mark → last → midpoint → prior close. |
+| Implied vol | Every contract you hold is marked to its live IV. |
+| The surface | Each ticker's skew, smile and term structure are re-fitted to its live chain by least squares, and the residual is reported in vol points so the parameters can be judged. The market proxy is always fitted, held or not, because its 30-day IV anchors the whole vol-shock model. |
+
+**Nothing is written without review.** A sync produces a *plan* — add, update,
+link, remove — that you accept row by row. Two rules make it safe to run:
+
+- A position you entered by hand is never removed by a sync. If the broker
+  reports the same contract, the existing row is *adopted* rather than
+  duplicated, keeping its strategy group, notes and open date.
+- Removals are the only destructive change, and they are unchecked by default.
+
+**Security.** The client secret and tokens stay on the server and are never
+returned by any endpoint. Tokens are encrypted at rest with AES-256-GCM and
+written 0600. Set `TARRO_SECRET_KEY` to keep the key out of the data directory;
+without it a key is generated beside the token file, and the UI says which of
+the two is in force. Only the last four digits of an account number are ever
+stored.
+
+**Working on it without a Schwab account.** `npm run mock-schwab` serves a
+stand-in shaped like the published schemas — see the header of
+`scripts/mock-schwab.ts`. The integration tests drive the real client, mapper,
+surface fit and reconciler against it.
+
+### A caveat on the field shapes
+
+Schwab publishes its schemas but does not guarantee them, and the mapper here
+was written against those published shapes rather than verified against a live
+account. So it is built to fail loudly instead of quietly: unit-ambiguous
+numbers are range-checked rather than assumed (an implied vol over 3.0 can only
+be a percentage), anything unmappable is reported as a warning instead of
+dropped, and **Connections → What Schwab sent back** prints the field names that
+actually arrived, values stripped. If a field has been renamed, that page is
+where it shows up — not in a total that is quietly wrong.
+
+## Market data by hand
+
+Everything Schwab fills in can also be typed under **Market data**, which is the
+only option on the published build (an OAuth secret cannot live in a browser).
+Prices, implied vols, betas and skew parameters all price the book, so update
+the marks before drawing a conclusion from a stress test.
 
 ## Caveats worth knowing
 

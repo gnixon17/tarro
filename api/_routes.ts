@@ -8,6 +8,8 @@
  */
 import express from 'express';
 import { driverName, mutateStore, readStore, resetStore, writeStore } from './_store';
+import { requestGuard } from './_guard';
+import { schwabRouter } from './schwab/routes';
 import {
   COLLECTIONS,
   StoreError,
@@ -24,11 +26,17 @@ import type { PortfolioStore, Position, StrategyGroup } from '../src/lib/types';
 
 export const apiRouter = express.Router();
 
+// Before anything else: this API has no login, so a request has to prove it is
+// same-origin and locally addressed before it can change anything.
+apiRouter.use(requestGuard);
+
 function wrap(handler: (req: express.Request, res: express.Response) => Promise<void>) {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     handler(req, res).catch(next);
   };
 }
+
+apiRouter.use('/schwab', schwabRouter);
 
 apiRouter.get('/health', wrap(async (_req, res) => {
   res.json({ ok: true, driver: driverName() });

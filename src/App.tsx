@@ -8,6 +8,7 @@ import Simulator from './pages/Simulator';
 import Scenarios from './pages/Scenarios';
 import Accounts from './pages/Accounts';
 import Instruments from './pages/Instruments';
+import Connections from './pages/Connections';
 import SettingsPage from './pages/SettingsPage';
 
 /**
@@ -30,6 +31,7 @@ export default function App() {
             <Route path="/scenarios" element={<Scenarios />} />
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/instruments" element={<Instruments />} />
+            <Route path="/connections" element={<Connections />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
